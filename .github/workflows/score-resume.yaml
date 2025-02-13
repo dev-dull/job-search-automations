@@ -16,8 +16,8 @@ jobs:
 
       - name: Set Resume Text
         run: |
-          ls -lah
-          echo "RESUME_TEXT=$(cat resume_details.yaml)" >> $GITHUB_ENV
+          RESUME_TEXT=$(cat resume_details.yaml | sed ':a;N;$!ba;s/\n/\\n/g')
+          echo "RESUME_TEXT=$RESUME_TEXT" >> $GITHUB_ENV
 
       - name: Run gemini-qualified action
         uses: dev-dull/job-search-automations/gemini-qualified@gemini-qualify
