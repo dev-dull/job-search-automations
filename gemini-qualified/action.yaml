@@ -68,11 +68,17 @@ runs:
             }]
           };
           const payload_string = JSON.stringify(payload, null, 2);
-          const response = await github.request(`POST https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL}:generateContent?key=${process.env.GOOGLE_API_KEY}`, {
-            headers: {
-              'content-type': 'application/json'
-            },
-            body: payload_string
-          });
+
+          try {
+            const response = await github.request(`POST https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL}:generateContent?key=${process.env.GOOGLE_API_KEY}`, {
+              headers: {
+                'content-type': 'application/json'
+              },
+              body: payload_string
+            });
+          } catch (error) {
+            console.error('Error:', error);
+            throw new Error('Failed to query Gemini API');
+          }
 
           console.log(response.data);
