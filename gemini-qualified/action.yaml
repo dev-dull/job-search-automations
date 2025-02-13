@@ -88,13 +88,13 @@ runs:
                 {
                   inline_data: {
                     mime_type: process.env.RESUME_MIME_TYPE,
-                    data: process.env.RESUME_TEXT
+                    data: Buffer.from(process.env.RESUME_TEXT).toString('base64')
                   }
                 },
                 {
                   inline_data: {
                     mime_type: process.env.JOB_DESCRIPTION_MIME_TYPE,
-                    data: process.env.JOB_DESCRIPTION
+                    data: Buffer.from(process.env.JOB_DESCRIPTION).toString('base64')
                   }
                 }
               ]
