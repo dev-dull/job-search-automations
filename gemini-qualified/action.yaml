@@ -41,7 +41,6 @@ runs:
         JOB_DESCRIPTION: ${{ inputs.JOB_DESCRIPTION }}
       with:
         script: |
-          const fetch = require('node-fetch');
           const payload = {
             'contents': [{
               'parts': [
