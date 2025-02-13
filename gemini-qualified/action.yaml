@@ -39,16 +39,16 @@ runs:
       with:
         script: |
           const payload = {
-            contents: [{
-              parts: [
+            'contents': [{
+              'parts': [
                 {
-                  text: `tell me a lymric about Chicago`
+                  'text': 'tell me a lymric about Chicago'
                 }
               ]
             }]
           }
           const payload_string = JSON.stringify(payload, null, 2);
-          const response = await github.request(`POST https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL}:generateContent?key=${process.env.GOOGLE_API_KEY}`,
+          const response = await github.request(`POST https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL}%3AgenerateContent?key=${process.env.GOOGLE_API_KEY}`,
             {
               headers: {
                 'content-type': 'application/json'
