@@ -44,7 +44,6 @@ runs:
                 text: "Act as an expert resume reviewer with previous careers in software engineering."
               }
             },
-            response_format: "json",
             contents: [
               {
                 parts: [
