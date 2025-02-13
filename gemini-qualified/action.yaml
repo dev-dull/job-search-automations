@@ -27,73 +27,95 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Query Candidate Qualification
+    - name: Simple Query
       uses: actions/github-script@v6
-      env:
-        GOOGLE_API_KEY: ${{ inputs.GOOGLE_API_KEY }}
-        GEMINI_MODEL: ${{ inputs.GEMINI_MODEL }}
-        RESUME_MIME_TYPE: ${{ inputs.RESUME_MIME_TYPE }}
-        RESUME_TEXT: ${{ inputs.RESUME_TEXT }}
-        JOB_DESCRIPTION_MIME_TYPE: ${{ inputs.JOB_DESCRIPTION_MIME_TYPE }}
-        JOB_DESCRIPTION: ${{ inputs.JOB_DESCRIPTION }}
       with:
         script: |
-          const fs = require('fs');
           const payload = {
             contents: [{
               parts: [
                 {
-                  text: `Compare the resume and job description and provide a JSON formatted response containing the following key/value pairs:
-                  - score: a score between 1 and 100 for how well the resume matches the job description.
-                  - explanation: an explanation of the score no longer than 250 words.
-                  - deficiencies: a list of deficiencies in the resume that the candidate likely possesses, but could be better highlighted in the resume.
-                  - strengths: a list of strengths in the resume that the candidate possesses.
-                  - recommendations: a list of specific changes that the candidate should make to their resume to improve their chances of getting the job.
-
-                  The response should be raw JSON, without any additional text or formatting. The JSON should use 2 spaces for indentation.`
-                },
-                {
-                  inline_data: {
-                    mime_type: process.env.RESUME_MIME_TYPE,
-                    data: process.env.RESUME_TEXT
-                  }
-                },
-                {
-                  inline_data: {
-                    mime_type: process.env.JOB_DESCRIPTION_MIME_TYPE,
-                    data: process.env.JOB_DESCRIPTION
-                  }
+                  text: `tell me a lymric about Chicago`
                 }
               ]
             }]
-          };
+          }
           const payload_string = JSON.stringify(payload, null, 2);
-
-          try {
-            const response = await github.request(`POST https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL}:generateContent?key=${process.env.GOOGLE_API_KEY}`, {
+          const response = await github.request(`POST https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL}:generateContent?key=${process.env.GOOGLE_API_KEY}`, {
               headers: {
                 'content-type': 'application/json'
               },
               body: payload_string
             });
-          } catch (error) {
-            console.error("Gemini API Error:", error);
-
-            if (error.response) {  // Check if the error has a response object
-              console.error("Response details:", error.response.status, error.response.data);
-              // Try to parse error.response.data as JSON to give more info
-              try {
-                const errorData = JSON.parse(error.response.data);
-                console.error("Parsed error data:", errorData);
-              } catch (jsonError) {
-                console.error("Failed to parse error response as JSON:", error.response.data)
-              }
-            } else if (error.request) { // The request was made but no response was received
-              console.error("Request details:", error.request);
-            } else { // Something else happened while setting up the request
-              console.error("Error message:", error.message);
-            }
-            throw error; // Important: Re-throw to fail the action
-          }
-
           console.log(response.data);
+
+    # - name: Query Candidate Qualification
+    #   uses: actions/github-script@v6
+    #   env:
+    #     GOOGLE_API_KEY: ${{ inputs.GOOGLE_API_KEY }}
+    #     GEMINI_MODEL: ${{ inputs.GEMINI_MODEL }}
+    #     RESUME_MIME_TYPE: ${{ inputs.RESUME_MIME_TYPE }}
+    #     RESUME_TEXT: ${{ inputs.RESUME_TEXT }}
+    #     JOB_DESCRIPTION_MIME_TYPE: ${{ inputs.JOB_DESCRIPTION_MIME_TYPE }}
+    #     JOB_DESCRIPTION: ${{ inputs.JOB_DESCRIPTION }}
+    #   with:
+    #     script: |
+    #       const fs = require('fs');
+    #       const payload = {
+    #         contents: [{
+    #           parts: [
+    #             {
+    #               text: `Compare the resume and job description and provide a JSON formatted response containing the following key/value pairs:
+    #               - score: a score between 1 and 100 for how well the resume matches the job description.
+    #               - explanation: an explanation of the score no longer than 250 words.
+    #               - deficiencies: a list of deficiencies in the resume that the candidate likely possesses, but could be better highlighted in the resume.
+    #               - strengths: a list of strengths in the resume that the candidate possesses.
+    #               - recommendations: a list of specific changes that the candidate should make to their resume to improve their chances of getting the job.
+
+    #               The response should be raw JSON, without any additional text or formatting. The JSON should use 2 spaces for indentation.`
+    #             },
+    #             {
+    #               inline_data: {
+    #                 mime_type: process.env.RESUME_MIME_TYPE,
+    #                 data: process.env.RESUME_TEXT
+    #               }
+    #             },
+    #             {
+    #               inline_data: {
+    #                 mime_type: process.env.JOB_DESCRIPTION_MIME_TYPE,
+    #                 data: process.env.JOB_DESCRIPTION
+    #               }
+    #             }
+    #           ]
+    #         }]
+    #       };
+    #       const payload_string = JSON.stringify(payload, null, 2);
+
+    #       try {
+    #         const response = await github.request(`POST https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL}:generateContent?key=${process.env.GOOGLE_API_KEY}`, {
+    #           headers: {
+    #             'content-type': 'application/json'
+    #           },
+    #           body: payload_string
+    #         });
+    #       } catch (error) {
+    #         console.error("Gemini API Error:", error);
+
+    #         if (error.response) {  // Check if the error has a response object
+    #           console.error("Response details:", error.response.status, error.response.data);
+    #           // Try to parse error.response.data as JSON to give more info
+    #           try {
+    #             const errorData = JSON.parse(error.response.data);
+    #             console.error("Parsed error data:", errorData);
+    #           } catch (jsonError) {
+    #             console.error("Failed to parse error response as JSON:", error.response.data)
+    #           }
+    #         } else if (error.request) { // The request was made but no response was received
+    #           console.error("Request details:", error.request);
+    #         } else { // Something else happened while setting up the request
+    #           console.error("Error message:", error.message);
+    #         }
+    #         throw error; // Important: Re-throw to fail the action
+    #       }
+
+    #       console.log(response.data);
