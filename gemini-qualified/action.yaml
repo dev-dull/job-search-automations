@@ -59,7 +59,7 @@ runs:
           });
 
           const data = await response.json();
-          console.log(data);
+          console.log(data.candidates[0].output.text);
 
     # - name: Query Candidate Qualification
     #   uses: actions/github-script@v6
