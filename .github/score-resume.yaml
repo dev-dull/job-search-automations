@@ -1,0 +1,33 @@
+name: Score Resume
+
+on:
+  push:
+  #   branches:
+  #     - main
+  # pull_request:
+  #   branches:
+  #     - main
+
+jobs:
+  score_resume:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          repository: git@github.com:dev-dull/resume.git
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set Resume Text
+        run: |
+          echo """RESUME_TEXT=$(cat resume_details.yaml)""" > $GITHUB_ENV
+
+      - name: Run gemini-qualified action
+        uses: dev-dull/gemini-qualified@gemini-qualify
+        with:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GEMINI_MODEL: gemini-2.0-flash
+          RESUME_TEXT: ${{ env.RESUME_TEXT }}
+          RESUME_MIME_TYPE: application/yaml
+          JOB_DESCRIPTION: ${{ secrets.TESTING_DELETE }}

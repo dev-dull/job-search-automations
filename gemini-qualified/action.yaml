@@ -1,0 +1,78 @@
+name: Check Candidate Qualification (Gemini)
+description: Use Google Gemini to evaluate if a candidate is qualified for a job based on their resume and the job description.
+
+inputs:
+  GOOGLE_API_KEY:
+    description: Google API Key For Gemini
+    required: true
+  GEMINI_MODEL:
+    description: Gemini Model
+    required: true
+    Default: gemini-2.0-flash
+  RESUME_TEXT:
+    description: Resume Text
+    required: true
+  RESUME_MIME_TYPE:
+    description: Resume Mime Type
+    required: true
+    default: text/plain
+  JOB_DESCRIPTION:
+    description: Job Description
+    required: true
+  JOB_DESCRIPTION_MIME_TYPE:
+    description: Job Description Mime Type
+    required: true
+    default: text/plain
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Save Resume
+      run: |
+        echo "Saving resume text to file..."
+        echo "${{ inputs.RESUME_TEXT }}" > resume.txt
+        echo "Resume saved to resume.txt"
+    - name: Save Job Description
+      run: |
+        echo "Saving job description to file..."
+        echo "${{ inputs.JOB_DESCRIPTION }}" > job_description.txt
+        echo "Job description saved to job_description.txt"
+    - name: Build Payload
+      run: |
+        echo "Building payload..."
+        cat > "/tmp/payload.json" << EOF
+        {
+          "contents": [{
+            "parts":[
+              {
+                "text": |
+                  Compare the resume and job description and provide a JSON formatted response containing the following key/value pairs:
+                  - score: a score between 1 and 100 for how well the resume matches the job description.
+                  - explanation: a detailed explanation of the score.
+                  - deficiencies: a list of deficiencies in the resume that the candidate likely possesses, but could be better highlighted in the resume.
+                  - strengths: a list of strengths in the resume that the candidate possesses.
+                  - recommendations: a list of specific changes that the candidate should make to their resume to improve their chances of getting the job.
+
+                  The response should be raw JSON, without any additional text or formatting. The JSON should be formatted with 2 spaces for indentation.
+              },
+              {
+                "inline_data": {
+                  "mime_type":"${{ inputs.RESUME_MIME_TYPE }}",
+                  "data": "$(cat resume.txt)"
+                },
+                {
+                "inline_data": {
+                  "mime_type":"${{ inputs.JOB_DESCRIPTION_MIME_TYPE }}",
+                  "data": "$(cat job_description.txt)"
+                },
+              }
+            ]
+          }]
+        }
+        EOF
+    - name: Run Gemini
+      run: |
+        curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$GOOGLE_API_KEY" \
+        -H 'Content-Type: application/json' \
+        -X POST \
+        -d "@/tmp/payload.json" 2> /dev/null
