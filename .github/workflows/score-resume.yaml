@@ -15,9 +15,13 @@ jobs:
           token: ${{ secrets.REPO_TOKEN }}
 
       - name: Set Resume Text
-        run: |
-          RESUME_TEXT=$(cat resume_details.yaml | sed ':a;N;$!ba;s/\n/\\n/g')
-          echo "RESUME_TEXT=$RESUME_TEXT" >> $GITHUB_ENV
+        uses: actions/github-script@v6
+        id: set-output
+        with:
+          script: |
+            const fs = require('fs')
+            const resumeText = fs.readFileSync('resume_details.yaml', 'utf8')
+            core.exportVariable('RESUME_TEXT', resumeText)
 
       - name: Run gemini-qualified action
         uses: dev-dull/job-search-automations/gemini-qualified@gemini-qualify
