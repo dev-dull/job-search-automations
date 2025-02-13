@@ -31,7 +31,7 @@ runs:
       shell: bash
       run: |
         echo "Saving resume text to file..."
-        echo "${{ inputs.RESUME_TEXT }}" > resume.txt
+        echo """${{ inputs.RESUME_TEXT }}""" > resume.txt
         echo "Resume saved to resume.txt"
     - name: Save Job Description
       shell: bash
