@@ -29,6 +29,12 @@ runs:
   steps:
     - name: Build Payload
       uses: actions/github-script@v6
+      env:
+        GOOGLE_API_KEY: ${{ inputs.GOOGLE_API_KEY }}
+        RESUME_MIME_TYPE: ${{ inputs.RESUME_MIME_TYPE }}
+        RESUME_TEXT: ${{ inputs.RESUME_TEXT }}
+        JOB_DESCRIPTION_MIME_TYPE: ${{ inputs.JOB_DESCRIPTION_MIME_TYPE }}
+        JOB_DESCRIPTION: ${{ inputs.JOB_DESCRIPTION }}
       with:
         script: |
           const fs = require('fs');
@@ -47,21 +53,21 @@ runs:
                 },
                 {
                   inline_data: {
-                    mime_type: process.env.INPUT_RESUME_MIME_TYPE,
-                    data: process.env.INPUT_RESUME_TEXT
+                    mime_type: process.env.RESUME_MIME_TYPE,
+                    data: process.env.RESUME_TEXT
                   }
                 },
                 {
                   inline_data: {
-                    mime_type: process.env.INPUT_JOB_DESCRIPTION_MIME_TYPE,
-                    data: process.env.INPUT_JOB_DESCRIPTION
+                    mime_type: process.env.JOB_DESCRIPTION_MIME_TYPE,
+                    data: process.env.JOB_DESCRIPTION
                   }
                 }
               ]
             }]
           };
           const payload_string = JSON.stringify(payload, null, 2);
-          const response = await github.request(`POST https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.INPUT_GOOGLE_API_KEY}`, {
+          const response = await github.request(`POST https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GOOGLE_API_KEY}, {
             headers: {
               'content-type': 'application/json'
             },
