@@ -12,18 +12,18 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: dev-dull/resume
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.REPO_TOKEN }}
 
       - name: Set Resume Text
         run: |
           ls -lah
           echo """RESUME_TEXT=$(cat resume_details.yaml)""" >> $GITHUB_ENV
 
-      # - name: Run gemini-qualified action
-      #   uses: dev-dull/gemini-qualified@gemini-qualify
-      #   with:
-      #     GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-      #     GEMINI_MODEL: gemini-2.0-flash
-      #     RESUME_TEXT: ${{ env.RESUME_TEXT }}
-      #     RESUME_MIME_TYPE: application/yaml
-      #     JOB_DESCRIPTION: ${{ secrets.TESTING_DELETE }}
+      - name: Run gemini-qualified action
+        uses: dev-dull/job-search-automations/gemini-qualified@gemini-qualify
+        with:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GEMINI_MODEL: gemini-2.0-flash
+          RESUME_TEXT: ${{ env.RESUME_TEXT }}
+          RESUME_MIME_TYPE: application/yaml
+          JOB_DESCRIPTION: ${{ secrets.TESTING_DELETE }}
