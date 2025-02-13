@@ -8,7 +8,7 @@ inputs:
   GEMINI_MODEL:
     description: Gemini Model
     required: true
-    Default: gemini-2.0-flash
+    default: gemini-2.0-flash
   RESUME_TEXT:
     description: Resume Text
     required: true
@@ -27,56 +27,45 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Save Resume
-      shell: bash
-      run: |
-        echo "Saving resume text to file..."
-        echo """${{ inputs.RESUME_TEXT }}""" > resume.txt
-        echo "Resume saved to resume.txt"
-    - name: Save Job Description
-      shell: bash
-      run: |
-        echo "Saving job description to file..."
-        echo "${{ inputs.JOB_DESCRIPTION }}" > job_description.txt
-        echo "Job description saved to job_description.txt"
     - name: Build Payload
-      shell: bash
-      run: |
-        echo "Building payload..."
-        cat > "/tmp/payload.json" << EOF
-        {
-          "contents": [{
-            "parts":[
-              {
-                "text": |
-                  Compare the resume and job description and provide a JSON formatted response containing the following key/value pairs:
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const payload = {
+            contents: [{
+              parts: [
+                {
+                  text: `Compare the resume and job description and provide a JSON formatted response containing the following key/value pairs:
                   - score: a score between 1 and 100 for how well the resume matches the job description.
                   - explanation: an explanation of the score no longer than 250 words.
                   - deficiencies: a list of deficiencies in the resume that the candidate likely possesses, but could be better highlighted in the resume.
                   - strengths: a list of strengths in the resume that the candidate possesses.
                   - recommendations: a list of specific changes that the candidate should make to their resume to improve their chances of getting the job.
 
-                  The response should be raw JSON, without any additional text or formatting. The JSON should use 2 spaces for indentation.
-              },
-              {
-                "inline_data": {
-                  "mime_type":"${{ inputs.RESUME_MIME_TYPE }}",
-                  "data": "$(cat resume.txt)"
+                  The response should be raw JSON, without any additional text or formatting. The JSON should use 2 spaces for indentation.`
                 },
                 {
-                "inline_data": {
-                  "mime_type":"${{ inputs.JOB_DESCRIPTION_MIME_TYPE }}",
-                  "data": "$(cat job_description.txt)"
+                  inline_data: {
+                    mime_type: process.env.INPUT_RESUME_MIME_TYPE,
+                    data: process.env.INPUT_RESUME_TEXT
+                  }
                 },
-              }
-            ]
-          }]
-        }
-        EOF
-    - name: Run Gemini
-      shell: bash
-      run: |
-        curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$GOOGLE_API_KEY" \
-        -H 'Content-Type: application/json' \
-        -X POST \
-        -d "@/tmp/payload.json" 2> /dev/null
+                {
+                  inline_data: {
+                    mime_type: process.env.INPUT_JOB_DESCRIPTION_MIME_TYPE,
+                    data: process.env.INPUT_JOB_DESCRIPTION
+                  }
+                }
+              ]
+            }]
+          };
+          const payload = JSON.stringify(payload, null, 2);
+          const response = await github.request("POST https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.INPUT_GOOGLE_API_KEY}", {
+            headers: {
+              'content-type': 'application/json'
+            },
+            data: payload
+          });
+
+          console.log(response.data);
