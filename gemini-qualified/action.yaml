@@ -77,8 +77,23 @@ runs:
               body: payload_string
             });
           } catch (error) {
-            console.error('Error:', error.response);
-            throw new Error('Failed to query Gemini API');
+            console.error("Gemini API Error:", error);
+
+            if (error.response) {  // Check if the error has a response object
+              console.error("Response details:", error.response.status, error.response.data);
+              // Try to parse error.response.data as JSON to give more info
+              try {
+                const errorData = JSON.parse(error.response.data);
+                console.error("Parsed error data:", errorData);
+              } catch (jsonError) {
+                console.error("Failed to parse error response as JSON:", error.response.data)
+              }
+            } else if (error.request) { // The request was made but no response was received
+              console.error("Request details:", error.request);
+            } else { // Something else happened while setting up the request
+              console.error("Error message:", error.message);
+            }
+            throw error; // Important: Re-throw to fail the action
           }
 
           console.log(response.data);
