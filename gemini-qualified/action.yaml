@@ -29,6 +29,13 @@ runs:
   steps:
     - name: Simple Query
       uses: actions/github-script@v6
+      env:
+        GOOGLE_API_KEY: ${{ inputs.GOOGLE_API_KEY }}
+        GEMINI_MODEL: ${{ inputs.GEMINI_MODEL }}
+        RESUME_MIME_TYPE: ${{ inputs.RESUME_MIME_TYPE }}
+        RESUME_TEXT: ${{ inputs.RESUME_TEXT }}
+        JOB_DESCRIPTION_MIME_TYPE: ${{ inputs.JOB_DESCRIPTION_MIME_TYPE }}
+        JOB_DESCRIPTION: ${{ inputs.JOB_DESCRIPTION }}
       with:
         script: |
           const payload = {
@@ -41,7 +48,8 @@ runs:
             }]
           }
           const payload_string = JSON.stringify(payload, null, 2);
-          const response = await github.request(`POST https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL}:generateContent?key=${process.env.GOOGLE_API_KEY}`, {
+          const response = await github.request(`POST https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL}:generateContent?key=${process.env.GOOGLE_API_KEY}`,
+            {
               headers: {
                 'content-type': 'application/json'
               },
