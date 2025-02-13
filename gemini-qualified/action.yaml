@@ -60,12 +60,12 @@ runs:
               ]
             }]
           };
-          const payload = JSON.stringify(payload, null, 2);
+          const payload_string = JSON.stringify(payload, null, 2);
           const response = await github.request("POST https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.INPUT_GOOGLE_API_KEY}", {
             headers: {
               'content-type': 'application/json'
             },
-            data: payload
+            data: payload_string
           });
 
           console.log(response.data);
