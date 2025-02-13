@@ -1,33 +1,4 @@
-name: Check Candidate Qualification (Gemini)
-description: Use Google Gemini to evaluate if a candidate is qualified for a job based on their resume and the job description.
-
-inputs:
-  GOOGLE_API_KEY:
-    description: Google API Key For Gemini
-    required: true
-  GEMINI_MODEL:
-    description: Gemini Model
-    required: true
-    default: gemini-2.0-flash
-  RESUME_TEXT:
-    description: Resume Text
-    required: true
-  RESUME_MIME_TYPE:
-    description: Resume Mime Type
-    required: true
-    default: text/plain
-  JOB_DESCRIPTION:
-    description: Job Description
-    required: true
-  JOB_DESCRIPTION_MIME_TYPE:
-    description: Job Description Mime Type
-    required: true
-    default: text/plain
-
-runs:
-  using: composite
-  steps:
-    - name: Build Payload
+- name: Build Payload
       uses: actions/github-script@v6
       env:
         GOOGLE_API_KEY: ${{ inputs.GOOGLE_API_KEY }}
@@ -72,7 +43,7 @@ runs:
             headers: {
               'content-type': 'application/json'
             },
-            body: payload
+            body: payload_string
           });
 
           console.log(response.data);
