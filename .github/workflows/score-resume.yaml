@@ -36,5 +36,4 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GEMINI_MODEL: gemini-2.0-flash
           RESUME_TEXT: ${{ env.RESUME_TEXT }}
-          # RESUME_MIME_TYPE: application/yaml
           JOB_DESCRIPTION: ${{ secrets.TESTING_DELETE }}

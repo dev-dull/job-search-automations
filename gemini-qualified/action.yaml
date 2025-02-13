@@ -27,40 +27,6 @@ inputs:
 runs:
   using: composite
   steps:
-    # - uses: actions/setup-node@v3 # Or latest version
-    #   with:
-    #     node-version: 16 # Or a compatible version
-    # - name: Simple Query
-    #   uses: actions/github-script@v6
-    #   env:
-    #     GOOGLE_API_KEY: ${{ inputs.GOOGLE_API_KEY }}
-    #     GEMINI_MODEL: ${{ inputs.GEMINI_MODEL }}
-    #     RESUME_MIME_TYPE: ${{ inputs.RESUME_MIME_TYPE }}
-    #     RESUME_TEXT: ${{ inputs.RESUME_TEXT }}
-    #     JOB_DESCRIPTION_MIME_TYPE: ${{ inputs.JOB_DESCRIPTION_MIME_TYPE }}
-    #     JOB_DESCRIPTION: ${{ inputs.JOB_DESCRIPTION }}
-    #   with:
-    #     script: |
-    #       const payload = {
-    #         'contents': [{
-    #           'parts': [
-    #             {
-    #               'text': 'tell me a lymric about Chicago'
-    #             }
-    #           ]
-    #         }]
-    #       }
-    #       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL}:generateContent?key=${process.env.GOOGLE_API_KEY}`, {
-    #         method: 'POST',
-    #         headers: {
-    #           'Content-Type': 'application/json'
-    #         },
-    #         body: JSON.stringify(payload)
-    #       });
-
-    #       const data = await response.json();
-    #       console.log(data.candidates[0].content.parts[0].text);
-
     - name: Query Candidate Qualification
       uses: actions/github-script@v6
       env:
@@ -73,32 +39,46 @@ runs:
       with:
         script: |
           const payload = {
-            contents: [{
-              parts: [
-                {
-                  text: `Compare the resume and job description and provide a JSON formatted response containing the following key/value pairs:
-                  - score: a score between 1 and 100 for how well the resume matches the job description.
-                  - explanation: an explanation of the score no longer than 250 words.
-                  - deficiencies: a list of deficiencies in the resume that the candidate likely possesses, but could be better highlighted in the resume.
-                  - strengths: a list of strengths in the resume that the candidate possesses.
-                  - recommendations: a list of specific changes that the candidate should make to their resume to improve their chances of getting the job.
+            system_instruction: [
+              {
+                parts: [
+                  {
+                    text: "Act as an expert resume reviewer with previous careers in software engineering."
+                  }
+                ]
+              }
+            ],
+            parameters: {
+              response_format: "json"
+            },
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `Compare the resume and job description and provide a JSON formatted response containing the following key/value pairs:
+                    - score: a score between 1 and 100 for how well the resume matches the job description.
+                    - explanation: an explanation of the score no longer than 250 words.
+                    - deficiencies: a list of deficiencies in the resume that the candidate likely possesses, but could be better highlighted in the resume.
+                    - strengths: a list of strengths in the resume that the candidate possesses.
+                    - recommendations: a list of specific changes that the candidate should make to their resume to improve their chances of getting the job.
 
-                  The response should be raw JSON, without any additional text or formatting. The JSON should use 2 spaces for indentation.`
-                },
-                {
-                  inline_data: {
-                    mime_type: process.env.RESUME_MIME_TYPE,
-                    data: Buffer.from(process.env.RESUME_TEXT).toString('base64')
+                    The JSON should be valid, parsable, and use 2 spaces for indentation.`
+                  },
+                  {
+                    inline_data: {
+                      mime_type: process.env.RESUME_MIME_TYPE,
+                      data: Buffer.from(process.env.RESUME_TEXT).toString('base64')
+                    }
+                  },
+                  {
+                    inline_data: {
+                      mime_type: process.env.JOB_DESCRIPTION_MIME_TYPE,
+                      data: Buffer.from(process.env.JOB_DESCRIPTION).toString('base64')
+                    }
                   }
-                },
-                {
-                  inline_data: {
-                    mime_type: process.env.JOB_DESCRIPTION_MIME_TYPE,
-                    data: Buffer.from(process.env.JOB_DESCRIPTION).toString('base64')
-                  }
-                }
-              ]
-            }]
+                ]
+              }
+            ]
           };
 
           const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL}:generateContent?key=${process.env.GOOGLE_API_KEY}`, {
