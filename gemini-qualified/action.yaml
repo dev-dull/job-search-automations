@@ -39,15 +39,11 @@ runs:
       with:
         script: |
           const payload = {
-            system_instruction: [
-              {
-                parts: [
-                  {
-                    text: "Act as an expert resume reviewer with previous careers in software engineering."
-                  }
-                ]
+            system_instruction: {
+              parts: {
+                text: "Act as an expert resume reviewer with previous careers in software engineering."
               }
-            ],
+            },
             parameters: {
               response_format: "json"
             },
