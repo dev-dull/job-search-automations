@@ -77,7 +77,7 @@ runs:
               body: payload_string
             });
           } catch (error) {
-            console.error('Error:', error);
+            console.error('Error:', error.response);
             throw new Error('Failed to query Gemini API');
           }
 
