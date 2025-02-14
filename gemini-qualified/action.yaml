@@ -78,8 +78,8 @@ runs:
                     - job_description_deficiencies: a list of deficiencies in the job description that the candidate should be aware of.
                     - job_company_name: from the job description, identify the company name.
                     - job_company_description: describe the company named in job_company_name in no more than 50 words.
-                    - job_company_sentiment: a score between 1 and 100 for how well the company is likely to treat its employees.
-                    - job_company_explanation: an explanation of the job_company_sentiment score no longer than 250 words.
+                    - job_company_sentiment: without referencing the job description or resume, provide a score between 1 and 100 for how well the company is likely to treat its employees.
+                    - job_company_explanation: without referencing the job description or resume, write an explanation of the job_company_sentiment score no longer than 250 words.
 
                     The JSON should be valid, parsable, use 2 spaces for indentation, and contain no additional formatting or comments.`
                   },
