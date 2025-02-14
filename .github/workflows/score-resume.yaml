@@ -41,15 +41,18 @@ jobs:
 
       - name: Print Gemini Score
         uses: actions/github-script@v6
+        env:
+          RAW: ${{ steps.gemini-check.outputs.RAW }}
+          RESPONSE_TEXT: ${{ steps.gemini-check.outputs.RESPONSE_TEXT }}
         with:
           script: |
             core.summary
               .addHeading('Gemini Score')
               .addRaw('Gemini text:\n```json\n')
-              .addRaw(steps.gemini-check.outputs.RESPONSE_TEXT)
+              .addRaw(process.env.RESPONSE_TEXT)
               .addRaw('\n```')
               .addHeading('Gemini Raw')
               .addRaw('Gemini Raw Response:\n\`\`\`json\n')
-              .addRaw(steps.gemini-check.outputs.RAW)
+              .addRaw(process.env.RAW)
               .addRaw('\n```')
               .write()
