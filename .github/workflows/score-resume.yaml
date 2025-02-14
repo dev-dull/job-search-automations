@@ -42,6 +42,6 @@ jobs:
       - name: Print Gemini Score
         run: |
           echo "## Gemini Score:" >> $GITHUB_STEP_SUMMARY
-          echo -e "Gemini text:\n```json\n${{ steps.gemini-score.outputs.RESPONSE_TEXT }}\n```" >> $GITHUB_STEP_SUMMARY
+          echo -e 'Gemini text:\n```json\n${{ steps.gemini-score.outputs.RESPONSE_TEXT }}\n```' >> $GITHUB_STEP_SUMMARY
           echo "## Gemini Raw:" >> $GITHUB_STEP_SUMMARY
-          echo -e "Gemini Raw Response:\n```json\n${{ steps.gemini-score.outputs.RAW }}\n```" >> $GITHUB_STEP_SUMMARY
+          echo -e 'Gemini Raw Response:\n```json\n${{ steps.gemini-score.outputs.RAW }}\n```' >> $GITHUB_STEP_SUMMARY
