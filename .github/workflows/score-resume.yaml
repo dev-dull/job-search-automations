@@ -22,7 +22,7 @@ jobs:
           # ${{secrets.PHONE}}
 
       - name: Set Resume Text
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         id: set-output
         with:
           script: |
@@ -38,9 +38,10 @@ jobs:
           GEMINI_MODEL: gemini-2.0-flash
           RESUME_TEXT: ${{ env.RESUME_TEXT }}
           JOB_DESCRIPTION: ${{ secrets.TESTING_DELETE }}
+          CAREER_GROWTH_KEYWORDS: Senior DevOps Kubernetes Docker Terraform Vault Ansible Linux
 
       - name: Print Gemini Score
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         env:
           RAW: ${{ steps.gemini-check.outputs.RAW }}
           RESPONSE_TEXT: ${{ steps.gemini-check.outputs.RESPONSE_TEXT }}

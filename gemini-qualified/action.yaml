@@ -16,6 +16,9 @@ inputs:
     description: Resume Mime Type
     required: true
     default: text/plain
+  CAREER_GROWTH_KEYWORDS:
+    description: Words to look for in the job description that will help grow the candidate's career in the desired direction.
+    required: true
   JOB_DESCRIPTION:
     description: Job Description
     required: true
@@ -44,6 +47,7 @@ runs:
         GEMINI_MODEL: ${{ inputs.GEMINI_MODEL }}
         RESUME_MIME_TYPE: ${{ inputs.RESUME_MIME_TYPE }}
         RESUME_TEXT: ${{ inputs.RESUME_TEXT }}
+        CAREER_GROWTH_KEYWORDS: ${{ inputs.CAREER_GROWTH_KEYWORDS }}
         JOB_DESCRIPTION_MIME_TYPE: ${{ inputs.JOB_DESCRIPTION_MIME_TYPE }}
         JOB_DESCRIPTION: ${{ inputs.JOB_DESCRIPTION }}
       with:
@@ -51,7 +55,7 @@ runs:
           const payload = {
             system_instruction: {
               parts: {
-                text: "Act as an expert resume reviewer with previous careers in software engineering."
+                text: "Act as an expert resume reviewer with a previous career in software engineering."
               }
             },
             contents: [
@@ -60,10 +64,14 @@ runs:
                   {
                     text: `Compare the resume and job description and provide a JSON formatted response containing the following key/value pairs:
                     - score: a score between 1 and 100 for how well the resume matches the job description.
+                    - career_growth_score: a score between 1 and 100 for words in the job description that are similar to the following: ${process.env.CAREER_GROWTH_KEYWORDS}
                     - explanation: an explanation of the score no longer than 250 words.
                     - deficiencies: a list of deficiencies in the resume that the candidate likely possesses, but could be better highlighted in the resume.
                     - strengths: a list of strengths in the resume that the candidate possesses.
                     - recommendations: a list of specific changes that the candidate should make to their resume to improve their chances of getting the job.
+                    - job_description_score: a score between 1 and 100 for how well the job description is written.
+                    - job_description_explanation: an explanation of the job_description_score no longer than 250 words.
+                    - job_description_deficiencies: a list of deficiencies in the job description that the candidate should be aware of.
 
                     The JSON should be valid, parsable, and use 2 spaces for indentation.`
                   },
