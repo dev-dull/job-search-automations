@@ -38,7 +38,7 @@ runs:
   using: composite
   steps:
     - name: Query Candidate Qualification
-      uses: actions/github-script@v6
+      uses: actions/github-script@v7
       env:
         GOOGLE_API_KEY: ${{ inputs.GOOGLE_API_KEY }}
         GEMINI_MODEL: ${{ inputs.GEMINI_MODEL }}
