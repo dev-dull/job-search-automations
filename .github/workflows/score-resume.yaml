@@ -1,7 +1,28 @@
 name: Score Resume
 
 on:
-  push:
+  workflow_dispatch:
+    inputs:
+      resume_repository:
+        description: The repository containing the resume to be scored.
+        required: true
+        default: dev-dull/resume
+      resume_path:
+        description: The path to the resume file to be scored.
+        required: true
+        default: resume_details.yaml
+      job_description_path:
+        description: The path to the job description file to be scored.
+        required: true
+        default: job.txt
+      branch:
+        description: The branch to use for the resume repository.
+        required: true
+        default: main
+      career_growth_keywords:
+        description: The keywords to look for in the job description that will help grow the candidates career in the desired direction
+        required: true
+        default: Remote Senior DevOps Kubernetes Docker Terraform Vault Ansible Linux
 
 jobs:
   score_resume:
@@ -11,7 +32,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          repository: dev-dull/resume
+          repository: ${{ github.event.inputs.resume_repository }}
+          ref: ${{ github.event.inputs.branch }}
           token: ${{ secrets.REPO_TOKEN }}
 
       - name: Supress personal information (no-op)
@@ -21,14 +43,20 @@ jobs:
           # ${{secrets.EMAIL}}
           # ${{secrets.PHONE}}
 
-      - name: Set Resume Text
+      - name: Set Resume, Job Description Text
         uses: actions/github-script@v7
-        id: set-output
+        env:
+          RESUME_PATH: ${{ github.event.inputs.resume_path }}
+          JOB_DESCRIPTION_PATH: ${{ github.event.inputs.job_description_path }}
         with:
           script: |
             const fs = require('fs')
-            const resumeText = fs.readFileSync('resume_details.yaml', 'utf8')
+            const resumeText = fs.readFileSync(process.env.RESUME_PATH, 'utf8')
             core.exportVariable('RESUME_TEXT', resumeText)
+
+            const fs = require('fs')
+            const jobText = fs.readFileSync(process.env.JOB_DESCRIPTION_PATHJ, 'utf8')
+            core.exportVariable('JOB_DESCRIPTION_TEXT', jobText)
 
       - name: Run gemini-qualified action
         id: gemini-check
@@ -37,8 +65,8 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GEMINI_MODEL: gemini-2.0-flash
           RESUME_TEXT: ${{ env.RESUME_TEXT }}
-          JOB_DESCRIPTION: ${{ secrets.TESTING_DELETE }}
-          CAREER_GROWTH_KEYWORDS: Senior DevOps Kubernetes Docker Terraform Vault Ansible Linux
+          JOB_DESCRIPTION: ${{ env.JOB_DESCRIPTION_TEXT }}
+          CAREER_GROWTH_KEYWORDS: input.career_growth_keywords
 
       - name: Print Gemini Score
         uses: actions/github-script@v7
@@ -80,9 +108,9 @@ jobs:
                 .addRaw(response.job_company_explanation)
                 .write()
             } catch (error) {
-              core.setFailed(`Error parsing JSON response: ${error.message}`);
               core.summary
                 .addCodeBlock(process.env.RESPONSE_TEXT)
                 .addError(error.message)
                 .write()
+              core.setFailed(`Error parsing JSON response: ${error.message}`);
             }
