@@ -48,6 +48,7 @@ runs:
         JOB_DESCRIPTION: ${{ inputs.JOB_DESCRIPTION }}
       with:
         script: |
+          core.setOutput('BUTTS', 'butts');
           const payload = {
             system_instruction: {
               parts: {
@@ -100,4 +101,3 @@ runs:
 
           core.setOutput('RAW', JSON.stringify(data, null, 2));
           core.setOutput('RESPONSE_TEXT', resultText);
-          core.setOutput('BUTTS', 'butts');
