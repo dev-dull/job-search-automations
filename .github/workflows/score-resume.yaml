@@ -44,14 +44,44 @@ jobs:
         uses: actions/github-script@v7
         env:
           RAW: ${{ steps.gemini-check.outputs.RAW }}
-          RESPONSE_TEXT: ${{ steps.gemini-check.outputs.RESPONSE_TEXT }}
+          candidate_score: ${{ fromJson(steps.gemini-check.outputs.RESPONSE_TEXT).candidate_score }}
+          career_growth_score: ${{ fromJson(steps.gemini-check.outputs.RESPONSE_TEXT).career_growth_score }}
+          candidate_explanation: ${{ fromJson(steps.gemini-check.outputs.RESPONSE_TEXT).candidate_explanation }}
+          candidate_deficiencies: ${{ fromJson(steps.gemini-check.outputs.RESPONSE_TEXT).candidate_deficiencies }}
+          candidate_strengths: ${{ fromJson(steps.gemini-check.outputs.RESPONSE_TEXT).candidate_strengths }}
+          candidate_recommendations: ${{ fromJson(steps.gemini-check.outputs.RESPONSE_TEXT).candidate_recommendations }}
+          job_description_score: ${{ fromJson(steps.gemini-check.outputs.RESPONSE_TEXT).job_description_score }}
+          job_description_explanation: ${{ fromJson(steps.gemini-check.outputs.RESPONSE_TEXT).job_description_explanation }}
+          job_description_deficiencies: ${{ fromJson(steps.gemini-check.outputs.RESPONSE_TEXT).job_description_deficiencies }}
+          job_company_name: ${{ fromJson(steps.gemini-check.outputs.RESPONSE_TEXT).job_company_name }}
+          job_company_description: ${{ fromJson(steps.gemini-check.outputs.RESPONSE_TEXT).job_company_description }}
+          job_company_sentiment: ${{ fromJson(steps.gemini-check.outputs.RESPONSE_TEXT).job_company_sentiment }}
+          job_company_explanation: ${{ fromJson(steps.gemini-check.outputs.RESPONSE_TEXT).job_company_explanation }}
         with:
           script: |
             core.summary
-              .addHeading('Gemini Score')
-              .addRaw('Gemini text:')
-              .addCodeBlock(process.env.RESPONSE_TEXT, 'json')
-              .addHeading('Gemini Raw')
-              .addRaw('Gemini Raw Response:')
-              .addCodeBlock(process.env.RAW, 'json')
+              .addHeading('About The Candidate')
+              .addHeading(`Candidate Score ${process.env.candidate_score}`, 2)
+              .addHeading(`Career Growth Score ${process.env.career_growth_score}`, 2)
+              .addHeading('Candidate Explanation', 2)
+              .addRaw(process.env.candidate_explanation)
+              .addHeading('Candidate Deficiencies', 2)
+              .addList(process.env.candidate_deficiencies)
+              .addHeading('Candidate Strengths', 2)
+              .addList(process.env.candidate_strengths)
+              .addHeading('Candidate Recommendations', 2)
+              .addList(process.env.candidate_recommendations)
+              .addHeading('About The Job')
+              .addHeading(`Job Description Score ${process.env.job_description_score}`, 2)
+              .addHeading('Job Description Explanation', 2)
+              .addRaw(process.env.job_description_explanation)
+              .addHeading('Job Description Deficiencies', 2)
+              .addList(process.env.job_description_deficiencies)
+              .addHeading(`About ${process.env.job_company_name}`)
+              .addHeading('Job Company Description', 2)
+              .addRaw(process.env.job_company_description)
+              .addHeading('Job Company Sentiment', 2)
+              .addRaw(process.env.job_company_sentiment)
+              .addHeading('Job Company Explanation', 2)
+              .addRaw(process.env.job_company_explanation)
               .write()
