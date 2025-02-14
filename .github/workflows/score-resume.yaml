@@ -48,7 +48,7 @@ jobs:
           script: |
             core.summary
               .addHeading('Gemini Score')
-              .addRaw('Gemini text:)
+              .addRaw('Gemini text:')
               .addCodeBlock(process.env.RESPONSE_TEXT, 'json')
               .addHeading('Gemini Raw')
               .addRaw('Gemini Raw Response:')
