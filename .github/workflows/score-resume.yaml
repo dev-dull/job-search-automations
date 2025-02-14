@@ -43,6 +43,7 @@ jobs:
         run: |
           echo "RESPONSE_TEXT: ${{ steps.gemini-score.outputs.RESPONSE_TEXT }}"
           echo "RAW: ${{ steps.gemini-score.outputs.RAW }}"
+          echo "BUTTS: ${{ steps.gemini-score.outputs.BUTTS }}"
 
       - name: Print Gemini Score
         run: |
