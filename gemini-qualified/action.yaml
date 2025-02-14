@@ -73,7 +73,7 @@ runs:
                     - candidate_deficiencies: a list of deficiencies in the resume that the candidate likely possesses, but could be better highlighted in the resume.
                     - candidate_strengths: a list of strengths in the resume that the candidate possesses.
                     - candidate_recommendations: a list of specific changes that the candidate should make to their resume to improve their chances of getting the job.
-                    - candidate_errors: a list of spelling and grammar errors in the resume.
+                    - candidate_errors: a list of spelling and grammar errors in the resume. If none are found, set the list to a single result that says "No errors found."
                     - job_description_score: a score between 1 and 100 for how well the job description is written.
                     - job_description_explanation: an explanation of the job_description_score no longer than 250 words.
                     - job_description_deficiencies: a list of deficiencies in the job description that the candidate should be aware of.
