@@ -25,10 +25,6 @@ inputs:
     default: text/plain
   # TODO: Add a way to set the system instruction so that it can be customized beyond the default of "software engineering."
 
-outputs:
-  RAW: ${{ steps.gemini-check.outputs.RAW }}
-  RESPONSE_TEXT: ${{ steps.gemini-check.outputs.RESPONSE_TEXT }}
-
 runs:
   using: composite
   steps:
@@ -96,3 +92,7 @@ runs:
 
           core.setOutput('RAW', JSON.stringify(data, null, 2));
           core.setOutput('RESPONSE_TEXT', resultText);
+
+outputs:
+  RAW: ${{ steps.gemini-check.outputs.RAW }}
+  RESPONSE_TEXT: ${{ steps.gemini-check.outputs.RESPONSE_TEXT }}
