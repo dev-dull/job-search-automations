@@ -55,7 +55,7 @@ jobs:
             const resumeText = fs.readFileSync(process.env.RESUME_PATH, 'utf8')
             core.exportVariable('RESUME_TEXT', resumeText)
 
-            const jobText = fs.readFileSync(process.env.JOB_DESCRIPTION_PATHJ, 'utf8')
+            const jobText = fs.readFileSync(process.env.JOB_DESCRIPTION_PATH, 'utf8')
             core.exportVariable('JOB_DESCRIPTION_TEXT', jobText)
 
       - name: Run gemini-qualified action
