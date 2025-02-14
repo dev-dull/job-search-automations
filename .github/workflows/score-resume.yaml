@@ -40,8 +40,12 @@ jobs:
           JOB_DESCRIPTION: ${{ secrets.TESTING_DELETE }}
 
       - name: Print Gemini Score
-        run: |
-          echo "## Gemini Score:" >> $GITHUB_STEP_SUMMARY
-          echo -e 'Gemini text:\n```json\n${{ steps.gemini-check.outputs.RESPONSE_TEXT }}\n```' >> $GITHUB_STEP_SUMMARY
-          echo "## Gemini Raw:" >> $GITHUB_STEP_SUMMARY
-          echo -e 'Gemini Raw Response:\n```json\n${{ steps.gemini-check.outputs.RAW }}\n```' >> $GITHUB_STEP_SUMMARY
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.summary
+              .addHeading('Gemini Score')
+              .addRaw(`Gemini text:\n\`\`\`json\n${{ steps.gemini-check.outputs.RESPONSE_TEXT }}\n\`\`\``)
+              .addHeading('Gemini Raw')
+              .addRaw(`Gemini Raw Response:\n\`\`\`json\n${{ steps.gemini-check.outputs.RAW }}\n\`\`\``)
+              .write()
