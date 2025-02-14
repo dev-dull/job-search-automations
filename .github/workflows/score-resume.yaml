@@ -42,6 +42,7 @@ jobs:
           # ${{secrets.ADDRESS}}
           # ${{secrets.EMAIL}}
           # ${{secrets.PHONE}}
+          find . -type f -name job.txt
 
       - name: Set Resume, Job Description Text
         uses: actions/github-script@v7
