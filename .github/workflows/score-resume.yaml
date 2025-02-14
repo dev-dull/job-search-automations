@@ -61,7 +61,7 @@ jobs:
 
       - name: Run gemini-qualified action
         id: gemini-check
-        uses: dev-dull/job-search-automations/gemini-qualified@v0.1.1
+        uses: dev-dull/job-search-automations/gemini-qualified@v0.1.2
         with:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GEMINI_MODEL: gemini-2.0-flash
