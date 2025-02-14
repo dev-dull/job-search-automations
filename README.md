@@ -30,10 +30,11 @@ The content of `RESPONSE_TEXT` is expected to be a JSON _string_ where Gemini ha
 - `candidate_deficiencies`: a list of deficiencies in the resume that the candidate likely possesses, but could be better highlighted in the resume.
 - `candidate_strengths`: a list of strengths in the resume that the candidate possesses.
 - `candidate_recommendations`: a list of specific changes that the candidate should make to their resume to improve their chances of getting the job.
+- `candidate_errors`: a list of spelling and grammar errors in the resume.
 - `job_description_score`: a score between 1 and 100 for how well the job description is written.
 - `job_description_explanation`: an explanation of the job_description_score no longer than 250 words.
 - `job_description_deficiencies`: a list of deficiencies in the job description that the candidate should be aware of.
 - `job_company_name`: from the job description, identify the company name.
 - `job_company_description`: describe the company named in job_company_name in no more than 50 words.
-- `job_company_sentiment`: without referencing the job description or resume, provide a score between 1 and 100 for how well the company is likely to treat its employees.
-- `job_company_explanation`: without referencing the job description or resume, write an explanation of the job_company_sentiment score no longer than 250 words.
+- `job_company_sentiment_score`: without referencing the job description or resume, provide a score between 1 and 100 for how well the company is likely to treat its employees.
+- `job_company_explanation`: without referencing the job description or resume, write an explanation of job_company_sentiment_score no longer than 250 words.
