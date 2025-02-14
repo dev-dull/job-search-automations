@@ -45,7 +45,11 @@ jobs:
           script: |
             core.summary
               .addHeading('Gemini Score')
-              .addRaw(`Gemini text:\n\`\`\`json\n${{ steps.gemini-check.outputs.RESPONSE_TEXT }}\n\`\`\``)
+              .addRaw('Gemini text:\n```json\n')
+              .addRaw(steps.gemini-check.outputs.RESPONSE_TEXT)
+              .addRaw('\n```')
               .addHeading('Gemini Raw')
-              .addRaw(`Gemini Raw Response:\n\`\`\`json\n${{ steps.gemini-check.outputs.RAW }}\n\`\`\``)
+              .addRaw('Gemini Raw Response:\n\`\`\`json\n')
+              .addRaw(steps.gemini-check.outputs.RAW)
+              .addRaw('\n```')
               .write()
