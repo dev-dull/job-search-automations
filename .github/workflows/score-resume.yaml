@@ -31,7 +31,7 @@ jobs:
             core.exportVariable('RESUME_TEXT', resumeText)
 
       - name: Run gemini-qualified action
-        id: geminiscore
+        id: gemini-check
         uses: dev-dull/job-search-automations/gemini-qualified@gemini-qualify
         with:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
@@ -41,13 +41,13 @@ jobs:
 
       - name: Debug Outputs
         run: |
-          echo "RESPONSE_TEXT: ${{ steps.geminiscore.outputs.RESPONSE_TEXT }}"
-          echo "RAW: ${{ steps.geminiscore.outputs.RAW }}"
-          echo "BUTTS: ${{ steps.geminiscore.outputs.BUTTS }}"
+          echo "RESPONSE_TEXT: ${{ steps.gemini-check.outputs.RESPONSE_TEXT }}"
+          echo "RAW: ${{ steps.gemini-check.outputs.RAW }}"
+          echo "BUTTS: ${{ steps.gemini-check.outputs.BUTTS }}"
 
       - name: Print Gemini Score
         run: |
           echo "## Gemini Score:" >> $GITHUB_STEP_SUMMARY
-          echo -e 'Gemini text:\n```json\n${{ steps.geminiscore.outputs.RESPONSE_TEXT }}\n```' >> $GITHUB_STEP_SUMMARY
+          echo -e 'Gemini text:\n```json\n${{ steps.gemini-check.outputs.RESPONSE_TEXT }}\n```' >> $GITHUB_STEP_SUMMARY
           echo "## Gemini Raw:" >> $GITHUB_STEP_SUMMARY
-          echo -e 'Gemini Raw Response:\n```json\n${{ steps.geminiscore.outputs.RAW }}\n```' >> $GITHUB_STEP_SUMMARY
+          echo -e 'Gemini Raw Response:\n```json\n${{ steps.gemini-check.outputs.RAW }}\n```' >> $GITHUB_STEP_SUMMARY
