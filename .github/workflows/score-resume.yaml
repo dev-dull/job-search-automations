@@ -47,31 +47,39 @@ jobs:
           RESPONSE_TEXT: ${{ steps.gemini-check.outputs.RESPONSE_TEXT }}
         with:
           script: |
-            const response = JSON.parse(process.env.RESPONSE_TEXT);
+            try {
+              const response = JSON.parse(process.env.RESPONSE_TEXT);
 
-            core.summary
-              .addHeading('About The Candidate')
-              .addHeading(`Candidate Score ${response.candidate_score}`, 2)
-              .addHeading(`Career Growth Score ${response.career_growth_score}`, 2)
-              .addHeading('Candidate Explanation', 2)
-              .addRaw(response.candidate_explanation)
-              .addHeading('Candidate Deficiencies', 2)
-              .addList(response.candidate_deficiencies)
-              .addHeading('Candidate Strengths', 2)
-              .addList(response.candidate_strengths)
-              .addHeading('Candidate Recommendations', 2)
-              .addList(response.candidate_recommendations)
-              .addHeading('About The Job')
-              .addHeading(`Job Description Score ${response.job_description_score}`, 2)
-              .addHeading('Job Description Explanation', 2)
-              .addRaw(response.job_description_explanation)
-              .addHeading('Job Description Deficiencies', 2)
-              .addList(response.job_description_deficiencies)
-              .addHeading(`About ${response.job_company_name}`)
-              .addHeading('Job Company Description', 2)
-              .addRaw(response.job_company_description)
-              .addHeading('Job Company Sentiment', 2)
-              .addRaw(response.job_company_sentiment)
-              .addHeading('Job Company Explanation', 2)
-              .addRaw(response.job_company_explanation)
-              .write()
+              core.summary
+                .addHeading('About The Candidate')
+                .addHeading(`Candidate Score ${response.candidate_score}`, 2)
+                .addHeading(`Career Growth Score ${response.career_growth_score}`, 2)
+                .addHeading('Candidate Explanation', 2)
+                .addRaw(response.candidate_explanation)
+                .addHeading('Candidate Deficiencies', 2)
+                .addList(response.candidate_deficiencies)
+                .addHeading('Candidate Strengths', 2)
+                .addList(response.candidate_strengths)
+                .addHeading('Candidate Recommendations', 2)
+                .addList(response.candidate_recommendations)
+                .addHeading('About The Job')
+                .addHeading(`Job Description Score ${response.job_description_score}`, 2)
+                .addHeading('Job Description Explanation', 2)
+                .addRaw(response.job_description_explanation)
+                .addHeading('Job Description Deficiencies', 2)
+                .addList(response.job_description_deficiencies)
+                .addHeading(`About ${response.job_company_name}`)
+                .addHeading('Job Company Description', 2)
+                .addRaw(response.job_company_description)
+                .addHeading('Job Company Sentiment', 2)
+                .addRaw(response.job_company_sentiment)
+                .addHeading('Job Company Explanation', 2)
+                .addRaw(response.job_company_explanation)
+                .write()
+            } catch (error) {
+              core.setFailed(`Error parsing JSON response: ${error.message}`);
+              core.summary
+                .addCodeBlock(process.env.RESPONSE_TEXT)
+                .addError(error.message)
+                .write()
+            }
