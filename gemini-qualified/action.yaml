@@ -93,7 +93,8 @@ runs:
           const data = await response.json();
           let resultText = data.candidates[0].content.parts[0].text;
           resultText = resultText.replace(/```json|```/g, '').trim();
-          const resultJson = JSON.parse(resultText);
+
+          console.log('Gemini response:', resultText);
 
           core.setOutput('RAW', JSON.stringify(data, null, 2));
           core.setOutput('RESPONSE_TEXT', resultText);
