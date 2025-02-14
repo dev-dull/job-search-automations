@@ -39,12 +39,6 @@ jobs:
           RESUME_TEXT: ${{ env.RESUME_TEXT }}
           JOB_DESCRIPTION: ${{ secrets.TESTING_DELETE }}
 
-      - name: Debug Outputs
-        run: |
-          echo "RESPONSE_TEXT: ${{ steps.gemini-check.outputs.RESPONSE_TEXT }}"
-          echo "RAW: ${{ steps.gemini-check.outputs.RAW }}"
-          echo "BUTTS: ${{ steps.gemini-check.outputs.BUTTS }}"
-
       - name: Print Gemini Score
         run: |
           echo "## Gemini Score:" >> $GITHUB_STEP_SUMMARY
