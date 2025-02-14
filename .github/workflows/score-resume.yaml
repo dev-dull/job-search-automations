@@ -52,5 +52,5 @@ jobs:
               .addCodeBlock(process.env.RESPONSE_TEXT, 'json')
               .addHeading('Gemini Raw')
               .addRaw('Gemini Raw Response:')
-              .addCodeBlock(process.env.RAW, json)
+              .addCodeBlock(process.env.RAW, 'json')
               .write()
