@@ -26,7 +26,10 @@ inputs:
     description: Job Description Mime Type
     required: true
     default: text/plain
-  # TODO: Add a way to set the system instruction so that it can be customized beyond the default of "software engineering."
+  PERSONA:
+    description: The persona to use for the system instruction. This is used to set the tone and style of the response.
+    required: true
+    default: Act as an expert technical recruiter with a previous career in software engineering who can crtically compare resumes to job descriptions to determine if a candidate is a fit for a role.
 
 outputs:
   RAW:
@@ -50,12 +53,13 @@ runs:
         CAREER_GROWTH_KEYWORDS: ${{ inputs.CAREER_GROWTH_KEYWORDS }}
         JOB_DESCRIPTION_MIME_TYPE: ${{ inputs.JOB_DESCRIPTION_MIME_TYPE }}
         JOB_DESCRIPTION: ${{ inputs.JOB_DESCRIPTION }}
+        PERSONA: ${{ inputs.PERSONA }}
       with:
         script: |
           const payload = {
             system_instruction: {
               parts: {
-                text: "Act as an expert resume reviewer with a previous career in software engineering."
+                text: process.env.PERSONA
               }
             },
             contents: [
@@ -63,17 +67,17 @@ runs:
                 parts: [
                   {
                     text: `Compare the resume and job description and provide a JSON formatted response containing the following key/value pairs:
-                    - score: a score between 1 and 100 for how well the resume matches the job description.
+                    - candidate_score: a score between 1 and 100 for how well the resume matches the job description.
                     - career_growth_score: a score between 1 and 100 for words in the job description that are similar to the following: ${process.env.CAREER_GROWTH_KEYWORDS}
-                    - explanation: an explanation of the score no longer than 250 words.
-                    - deficiencies: a list of deficiencies in the resume that the candidate likely possesses, but could be better highlighted in the resume.
-                    - strengths: a list of strengths in the resume that the candidate possesses.
-                    - recommendations: a list of specific changes that the candidate should make to their resume to improve their chances of getting the job.
+                    - candidate_explanation: an explanation of the score no longer than 250 words.
+                    - candidate_deficiencies: a list of deficiencies in the resume that the candidate likely possesses, but could be better highlighted in the resume.
+                    - candidate_strengths: a list of strengths in the resume that the candidate possesses.
+                    - candidate_recommendations: a list of specific changes that the candidate should make to their resume to improve their chances of getting the job.
                     - job_description_score: a score between 1 and 100 for how well the job description is written.
                     - job_description_explanation: an explanation of the job_description_score no longer than 250 words.
                     - job_description_deficiencies: a list of deficiencies in the job description that the candidate should be aware of.
 
-                    The JSON should be valid, parsable, and use 2 spaces for indentation.`
+                    The JSON should be valid, parsable, use 2 spaces for indentation, and contain no additional formatting or comments.`
                   },
                   {
                     inline_data: {
