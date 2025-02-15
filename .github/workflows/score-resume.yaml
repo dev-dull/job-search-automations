@@ -37,12 +37,13 @@ jobs:
           token: ${{ secrets.REPO_TOKEN }}
 
       - name: Supress personal information (no-op)
+        # GitHub Actions only hides secrets that are referenced in the workflow file.
+        # This is a no-op step to ensure that the secrets are not exposed in the logs.
         shell: bash
         run: |
           # ${{secrets.ADDRESS}}
           # ${{secrets.EMAIL}}
           # ${{secrets.PHONE}}
-          find . -type f -name job.txt
 
       - name: Set Resume, Job Description Text
         uses: actions/github-script@v7
