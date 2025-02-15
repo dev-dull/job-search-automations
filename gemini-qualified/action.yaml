@@ -66,7 +66,7 @@ runs:
               {
                 parts: [
                   {
-                    text: `Compare the resume and job description and provide a JSON formatted response containing the following key/value pairs:
+                    text: `Compare the resume and job description with the goal of helping the candidate tailor their resume for the position. Provide a JSON formatted response containing the following key/value pairs:
                     - candidate_score: a score between 1 and 100 for how well the resume matches the job description.
                     - career_growth_score: a score between 1 and 100 for words in the job description that are similar to the following: ${process.env.CAREER_GROWTH_KEYWORDS}
                     - candidate_explanation: an explanation of the score no longer than 250 words.
