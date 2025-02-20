@@ -109,8 +109,8 @@ runs:
           console.log('ALASTAIR 2');
           const data = await response.json();
           console.log('ALASTAIR 3');
-          let resultText = data.candidates[0].content.parts[0].text;
           console.log(JSON.stringify(data, null, 2));
+          let resultText = data.candidates[0].content.parts[0].text;
           console.log('ALASTAIR 4');
           resultText = resultText.replace(/^```(html)?$/g, '').trim();
           console.log('ALASTAIR 5');
