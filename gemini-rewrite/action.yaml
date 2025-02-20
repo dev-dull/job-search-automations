@@ -73,6 +73,9 @@ runs:
                     Generate an HTML formatted resume adhering to the following guidelines:
                     - The resume should be tailored to the job description provided.
                     - You may reword the resume to make it more appealing but do NOT add any new, or misleading information.
+                    - The resume should highlight the candidate's skills and experience that are relevant to the job description.
+                    - You may omit any sections or details that are not relevant to the job description.
+                    - The resume should fit within a single page.
                     - Include a header with the candidate's name and contact information.
                     - The resume should be styled using CSS to enhance its appearance.
                     - The resume should be formatted in a way that is easy to read and visually appealing.
