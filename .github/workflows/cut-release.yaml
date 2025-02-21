@@ -1,0 +1,30 @@
+# GitHub Action Workflow to update tags with new version number, update release notes, and create a new release
+name: Create New Version and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version increment type (major, minor, patch)'
+        required: true
+        default: 'patch'
+
+jobs:
+  create_version_and_release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bump version and push tag
+        id: bump_version
+        uses: anothrNick/github-tag-action@1.71.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEFAULT_BUMP: ${{ github.event.inputs.version_type }}
+          WITH_V: true
+
+      - name: Cut Release
+        uses: softprops/action-gh-release@v2
