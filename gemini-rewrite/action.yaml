@@ -72,11 +72,11 @@ runs:
                     - You may reword the resume to make it more appealing but do NOT add any new, or misleading information.
                     - The resume should highlight the candidate's skills and experience that are relevant to the job description.
                     - The resume should fit within a single page.
-                    - Any experience older than 10 years should be listed in a separate section at the end of the resume.
-                    - Any candidaate summary may be omitted or shortened to adhear to best practices when applying for a role in the employers industry.
-                    - Any education section may be omitted when older than 5 years or to adhear to best practices when applying for a role in the employers industry.
+                    - Any experience older than 10 years must be included a separate section at the end of the resume and only list the company name, job title, and dates of employment.
+                    - Any candidaate summary may be omitted or shortened to adhear to best practices when applying for a role within the employers industry.
+                    - Any education section may be omitted when older than 5 years, or when it adhears to best practices when applying for a role within the employers industry.
                     - Any experience or skills that are not directly relevant to the job description should be de-emphasized.
-                    - Include a slim header with the candidate's name and contact information.
+                    - Include a minimal header with the candidate's name and contact information.
                     - The resume should be styled using CSS to enhance its appearance.
                     - The resume should be formatted in a way that is easy to read and visually appealing.
                     - The HTML should be well-structured, valid, and parsable and adhear to modern web standards.
