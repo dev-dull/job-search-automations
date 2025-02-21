@@ -28,6 +28,7 @@ jobs:
       - name: Cut Release
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.REPO_TOKEN }}
           tag_name: ${{ steps.bump_version.outputs.new_tag }}
           generate_release_notes: true
           files: '*'  # TODO: Narrow scope to specific action directories
