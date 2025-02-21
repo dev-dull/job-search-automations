@@ -22,7 +22,7 @@ jobs:
         id: bump_version
         uses: anothrNick/github-tag-action@1.71.0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
           DEFAULT_BUMP: ${{ github.event.inputs.version_type }}
           WITH_V: true
 
