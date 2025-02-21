@@ -67,6 +67,8 @@ runs:
                     - Resume
                     - Job Description
 
+                    Today's date is ${new Date().toLocaleDateString()}.
+
                     Generate an HTML formatted resume adhering to the following guidelines:
                     - The resume should be tailored to the job description provided.
                     - You may reword the resume to make it more appealing but do NOT add any new, or misleading information.
