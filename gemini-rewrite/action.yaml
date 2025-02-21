@@ -74,6 +74,7 @@ runs:
                     - The resume should fit within a single page.
                     - Any experience older than 10 years should be listed in a separate section at the end of the resume.
                     - Any candidaate summary may be omitted or shortened to adhear to best practices when applying for a role in the employers industry.
+                    - Any education section may be omitted when older than 5 years or to adhear to best practices when applying for a role in the employers industry.
                     - Any experience or skills that are not directly relevant to the job description should be de-emphasized.
                     - Include a slim header with the candidate's name and contact information.
                     - The resume should be styled using CSS to enhance its appearance.
