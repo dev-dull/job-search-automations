@@ -50,7 +50,7 @@ Uses the free tier of Google Gemini to compare a resume to a job description and
 |RESUME_MIME_TYPE|The http mime type for the resume format|Y|`text/plain`|
 |JOB_DESCRIPTION|The body of the job description to evaluate|Y||
 |JOB_DESCRIPTION_MIME_TYPE|The http mime type for the job description format|Y|`text/plain`|
-|PERSONA|The role Gemini should play (typically starts, "You are..." or "Act as a...")|Y||`Act as an expert technical recruiter and career coach with a previous career in software engineering who assists candidates with tailoring their resume for a specific job application.`|
+|PERSONA|The role Gemini should play (typically starts, "You are..." or "Act as a...")|Y|`Act as an expert technical recruiter and career coach with a previous career in software engineering who assists candidates with tailoring their resume for a specific job application.`|
 
 #### Outputs
 |Output Name|Output Description|
