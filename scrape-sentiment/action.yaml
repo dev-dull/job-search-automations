@@ -1,0 +1,63 @@
+name: Scrape Indeed
+description: Attempt to scrape employer reviews from Indeed
+
+inputs:
+  COMPANY_NAME:
+    description: The name of the company to scrape reviews for
+    required: true
+
+outputs:
+  REVIEWS:
+    description: The reviews scraped from Indeed
+    value: ${{ steps.scrape-sentiment.outputs.REVIEWS }}
+
+runs:
+  using: composite
+  steps:
+    # - name: Scrape Reviews
+    #   id: scrape-sentiment
+    #   outputs: REVIEWS
+    #   env:
+    #     COMPANY_NAME: ${{ inputs.COMPANY_NAME }}
+    #   uses: actions/github-script@v7
+    #   with:
+    #     script: |
+    #       const fetch = require('node-fetch');
+    #       const cheerio = require('cheerio');
+
+    #       const url = `https://www.indeed.com/cmp/${process.env.COMPANY_NAME}/reviews`;
+
+    #       const response = await fetch(url);
+    #       const html = await response.text();
+    #       const $ = cheerio.load(html);
+
+    #       const reviews = [];
+    #       // xpath: "//div[@data-testid='reviewsList']"
+    #       $('div[data-testid="reviewsList"] .cmp-Review-text').each((_, element) => {
+    #         reviews.push($(element).text());
+    #       });
+
+    #       core.setOutput('REVIEWS', reviews);
+    - name: Scrape Reviews
+      id: scrape-sentiment
+      run:
+        echo "Scraping reviews for $COMPANY_NAME"
+        curl 'https://www.indeed.com/cmp/Evgo/reviews' \
+          --compressed \
+          -X POST \
+          -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0' -H 'Accept: */*' \
+          -H 'Accept-Language: en-US,en;q=0.5' \
+          -H 'Referer: https://www.indeed.com/' \
+          -H 'Content-Type: text/plain;charset=UTF-8' \
+          -H 'Origin: https://www.indeed.com' \
+          -H 'Connection: keep-alive' \
+          -H 'Sec-Fetch-Dest: empty' \
+          -H 'Sec-Fetch-Mode: cors' \
+          -H 'Sec-Fetch-Site: same-site' \
+          -H 'DNT: 1' \
+          -H 'Sec-GPC: 1' \
+          -H 'Priority: u=4' > reviews.html
+
+        echo REVIEWS=$(xmllint --html --recover --nowarning --format --xpath "//div[@data-testid='reviewsList']" reviews.html) >> $GITHUB_OUTPUT
+    - name: Output test
+      run: echo "${{ steps.scrape-sentiment.outputs.REVIEWS }}"

@@ -1,0 +1,21 @@
+name: Create New Version and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version increment type (major, minor, patch)'
+        required: true
+        default: 'patch'
+
+jobs:
+  test-sentiemnt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Use Sentiment
+        id: sentiment
+        uses: dev-dull/scrape-sentiment@scrape-sentiment
+        with:
+          COMPANY_NAME: 'Evgo'
+      - name: Output test
+        run: echo ${{ steps.sentiment.outputs.REVIEWS }}
