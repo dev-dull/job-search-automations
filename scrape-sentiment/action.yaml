@@ -40,7 +40,7 @@ runs:
     #       core.setOutput('REVIEWS', reviews);
     - name: Scrape Reviews
       id: scrape-sentiment
-      run:
+      run: |
         echo "Scraping reviews for $COMPANY_NAME"
         curl 'https://www.indeed.com/cmp/Evgo/reviews' \
           --compressed \
