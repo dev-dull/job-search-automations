@@ -67,7 +67,7 @@ runs:
         # echo REVIEWS=$(xmllint --html --recover --nowarning --format --xpath "//div[@data-testid='reviewsList']" reviews.html 2>/dev/null) >> $GITHUB_OUTPUT
         # xmllint --html --recover --nowarning --format --xpath "//div[@data-testid='reviewsList']" reviews.html
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: reviews.html
         path: reviews.html
