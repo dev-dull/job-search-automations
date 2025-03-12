@@ -1,12 +1,7 @@
 name: Create New Version and Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version_type:
-        description: 'Version increment type (major, minor, patch)'
-        required: true
-        default: 'patch'
+  push:
 
 jobs:
   test-sentiemnt:
