@@ -9,7 +9,7 @@ jobs:
     steps:
       - name: Use Sentiment
         id: sentiment
-        uses: dev-dull/scrape-sentiment@scrape-sentiment
+        uses: dev-dull/job-search-automations/scrape-sentiment@scrape-sentiment
         with:
           COMPANY_NAME: 'Evgo'
       - name: Output test
