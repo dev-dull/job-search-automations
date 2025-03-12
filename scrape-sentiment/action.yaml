@@ -42,7 +42,7 @@ runs:
       id: scrape-sentiment
       shell: bash
       run: |
-        echo "Scraping reviews for $COMPANY_NAME"
+        echo "Scraping reviews for ${{inputs.COMPANY_NAME}}"
         curl 'https://www.indeed.com/cmp/${{inputs.COMPANY_NAME}}/reviews' \
           --compressed \
           -X POST \
@@ -60,6 +60,7 @@ runs:
           -H 'Priority: u=4' > reviews.html
 
         echo REVIEWS=$(xmllint --html --recover --nowarning --format --xpath "//div[@data-testid='reviewsList']" reviews.html) >> $GITHUB_OUTPUT
+        cat reviews.html
     - name: Output test
       shell: bash
       run: echo "${{ steps.scrape-sentiment.outputs.REVIEWS }}"
