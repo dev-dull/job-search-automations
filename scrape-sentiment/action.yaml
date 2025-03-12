@@ -40,9 +40,10 @@ runs:
     #       core.setOutput('REVIEWS', reviews);
     - name: Scrape Reviews
       id: scrape-sentiment
+      shell: bash
       run: |
         echo "Scraping reviews for $COMPANY_NAME"
-        curl 'https://www.indeed.com/cmp/Evgo/reviews' \
+        curl 'https://www.indeed.com/cmp/${{inputs.COMPANY_NAME}}/reviews' \
           --compressed \
           -X POST \
           -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0' -H 'Accept: */*' \
