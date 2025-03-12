@@ -60,7 +60,7 @@ runs:
           -H 'Priority: u=4' > reviews.html
 
         echo REVIEWS=$(xmllint --html --recover --nowarning --format --xpath "//div[@data-testid='reviewsList']" reviews.html) >> $GITHUB_OUTPUT
-        cat reviews.html
+        xmllint --help
     - name: Output test
       shell: bash
       run: echo "${{ steps.scrape-sentiment.outputs.REVIEWS }}"
