@@ -61,4 +61,5 @@ runs:
 
         echo REVIEWS=$(xmllint --html --recover --nowarning --format --xpath "//div[@data-testid='reviewsList']" reviews.html) >> $GITHUB_OUTPUT
     - name: Output test
+      shell: bash
       run: echo "${{ steps.scrape-sentiment.outputs.REVIEWS }}"
