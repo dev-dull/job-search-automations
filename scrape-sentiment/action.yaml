@@ -65,7 +65,13 @@ runs:
           -H 'Priority: u=4' > reviews.html
 
         # echo REVIEWS=$(xmllint --html --recover --nowarning --format --xpath "//div[@data-testid='reviewsList']" reviews.html 2>/dev/null) >> $GITHUB_OUTPUT
-        xmllint --html --recover --nowarning --format --xpath "//div[@data-testid='reviewsList']" reviews.html
+        # xmllint --html --recover --nowarning --format --xpath "//div[@data-testid='reviewsList']" reviews.html
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: reviews.html
+        path: reviews.html
+
     - name: Output test
       shell: bash
       run: echo "${{ steps.scrape-sentiment.outputs.REVIEWS }}"
