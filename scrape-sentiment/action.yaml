@@ -38,6 +38,11 @@ runs:
     #       });
 
     #       core.setOutput('REVIEWS', reviews);
+    - name: Set up xmllit
+      shell: bash
+      run: |
+        apt-get update
+        apt-get install -y libxml2-utils
     - name: Scrape Reviews
       id: scrape-sentiment
       shell: bash
