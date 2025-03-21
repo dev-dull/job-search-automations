@@ -1,0 +1,45 @@
+name: HTML 2 PDF
+description: Convert HTML file in a repository to a PDF
+
+inputs:
+  resume_repository:
+    description: The repository containing the resume to be scored.
+    required: true
+    default: dev-dull/resume
+  resume_path:
+    description: The path to the resume file to be scored.
+    required: true
+    default: resume_details.yaml
+  branch:
+    description: The branch to use for the resume repository.
+    required: true
+    default: main
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ github.event.inputs.resume_repository }}
+        ref: ${{ github.event.inputs.branch }}
+        token: ${{ secrets.REPO_TOKEN }}
+
+    - name: Install wkhtmltopdf
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wkhtmltopdf
+
+    - name: Convert HTML to PDF
+      shell: bash
+      run: |
+        PDF_FILE=${echo '${{ github.event.inputs.resume_path }}' | sed 's/\.html$//g')
+        echo "PDF_FILE=${PDF_FILE}.pdf" | tee -a $GITHUB_ENV
+        wkhtmltopdf "${{ github.event.inputs.resume_path }}" "${PDF_FILE}.pdf"
+
+    - name: Upload PDF artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ env.PDF_FILE }}
+        path: ${{ env.PDF_FILE }}
