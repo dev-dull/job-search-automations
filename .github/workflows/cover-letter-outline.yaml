@@ -1,0 +1,99 @@
+name: Cover Letter Outline
+run-name: Cover Letter Outline - ${{ github.event.inputs.branch }}
+on:
+  workflow_dispatch:
+    inputs:
+      resume_repository:
+        description: The repository containing the resume to be scored.
+        required: true
+        default: dev-dull/resume
+      resume_path:
+        description: The path to the resume file to reference while generating a cover letter outline.
+        required: true
+        default: resume_details.yaml
+      job_description_path:
+        description: The path to the job description file to reference while generating a cover letter outline.
+        required: true
+        default: job.txt
+      company_career_info_path:
+        description: The path to the career information text to reference while generating a cover letter outline.
+        required: true
+        default: company.txt
+      branch:
+        description: The branch to use for the resume repository.
+        required: true
+        default: main
+
+env:
+  BRANCH: ${{ github.event.inputs.branch || github.ref }}
+  RESUME_PATH: ${{ github.event.inputs.resume_path }}
+  JOB_DESCRIPTION_PATH: ${{ github.event.inputs.job_description_path }}
+  COMPANY_CAREER_INFO_PATH: ${{ github.event.inputs.company_career_info_path }}
+
+jobs:
+  apply_yourself:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.inputs.resume_repository }}
+          ref: ${{ github.event.inputs.branch }}
+          token: ${{ secrets.REPO_TOKEN }}
+
+      - name: Set Resume, Job Description, Career Info Text
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs')
+
+            const resumeText = fs.readFileSync(process.env.RESUME_PATH, 'utf8')
+            core.exportVariable('RESUME_TEXT', resumeText)
+
+            const jobText = fs.readFileSync(process.env.JOB_DESCRIPTION_PATH, 'utf8')
+            core.exportVariable('JOB_DESCRIPTION_TEXT', jobText)
+
+            const companyCareerInfoText = fs.readFileSync(process.env.COMPANY_CAREER_INFO_PATH, 'utf8')
+            core.exportVariable('COMPANY_CAREER_INFO_TEXT', companyCareerInfoText)
+      - name: Run gemini-cover-outline action
+        id: gemini-apply
+        uses: dev-dull/job-search-automations/gemini-cover-outline@apply_yourself
+        with:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GEMINI_MODEL: gemini-2.0-flash
+          RESUME_TEXT: ${{ env.RESUME_TEXT }}
+          JOB_DESCRIPTION: ${{ env.JOB_DESCRIPTION_TEXT }}
+          COMPANY_CAREER_INFO: ${{ env.COMPANY_CAREER_INFO_TEXT }}
+      - name: Output cover letter outline
+        uses: actions/github-script@v7
+        env:
+          RAW: ${{ steps.gemini-apply.outputs.RAW }}
+          RESPONSE_TEXT: ${{ steps.gemini-apply.outputs.RESPONSE_TEXT }}
+        with:
+          script: |
+            try {
+              const response = JSON.parse(process.env.RESPONSE_TEXT);
+              console.log(JSON.stringify(response, null, 2));
+
+              core.summary
+                .addHeading('Intoduction Tips')
+                .addRaw(response.introduction_help)
+                .addHeading('Cover Letter Outline')
+                .addList(response.outline)
+                .addHeading('Conclusion Tips')
+                .addRaw(response.conclusion_help)
+                .addHeading('Additional Tips')
+                .addRaw(response.additional_help)
+                .write()
+            } catch (error) {
+              core.summary
+                .addHeading('Error parsing JSON response')
+                .addHeading('Response Text', 2)
+                .addCodeBlock(process.env.RESPONSE_TEXT)
+                .addHeading('Raw Text', 2)
+                .addCodeBlock(process.env.RAW)
+                .addHeading('Error message', 2)
+                .addCodeBlock(error.message)
+                .write()
+              core.setFailed(`Error parsing JSON response: ${error.message}`);
+            }

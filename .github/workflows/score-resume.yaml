@@ -1,5 +1,5 @@
 name: Score Resume
-
+run-name: Score Resume - ${{ github.event.inputs.branch }}
 on:
   workflow_dispatch:
     inputs:
