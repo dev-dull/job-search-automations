@@ -74,7 +74,7 @@ runs:
                   {
                     text: `Compare the resume, the job description, and the company career page information with the goal of helping the candidate write a cover letter by suggesting an outline for the letter. Provide a JSON formatted response containing the following key/value pairs:
                     - introduction_help: a short paragraph to help the candidate write an introduction to the cover letter that includes some suggested phrasing that will help the candidate get started with a friendly and professional tone.
-                    - outline: a markdown formatted list of the sections to include in the cover letter, including a brief description of what to include in each section. Be sure to incorporate the company career information provided in the input.
+                    - outline: a list of the sections to include in the cover letter, including a brief description of what to include in each section. Be sure to incorporate the company career information provided in the input.
                     - conclusion_help: a short paragraph to help the candidate write a conclusion to the cover letter that includes some suggested phrasing that will help the candidate finish the letter with a friendly and professional tone.
                     - additional_help: a short paragraph to help the candidate write a cover letter that includes some suggested phrasing that will help the candidate finish the letter with a friendly and professional tone.
 
