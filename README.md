@@ -59,3 +59,30 @@ Uses the free tier of Google Gemini to compare a resume to a job description and
 |RESPONSE_TEXT|Just the generated string from Gemini|
 
 The content of `RESPONSE_TEXT` is expected to the modified resume written in an HTML format.
+
+### dev-dull/job-search-automations/gemini-cover-outline
+Uses the free tier of Google Gemini to compare a resume to a job description and the company's career information to generate an outline to a cover letter to aid the user in writing an effective letter to use when applying to a role.
+#### Inputs
+|Input Name|Input Description|Required Y/N|Default Value|
+|----------|-----------------|------------|-------------|
+|GOOGLE_API_KEY|Google API key for Gemini|Y||
+|GEMINI_MODEL|The Gemini model to use (as found in the API URL)|Y|`gemini-2.0-flash`|
+|RESUME_TEXT|The body of the resume to evaluate|Y||
+|RESUME_MIME_TYPE|The http mime type for the resume format|Y|`text/plain`|
+|JOB_DESCRIPTION|The body of the job description to evaluate|Y||
+|JOB_DESCRIPTION_MIME_TYPE|The http mime type for the job description format|Y|`text/plain`|
+|COMPANY_CAREER_INFO|Text found on the company's websites that describes the company culture, values, mission, and any other details provided on the Company's website which they present to prospective candidates|Y||
+|COMPANY_CAREER_INFO_MIME_TYPE|The http mime type for the company career information|`text/plain`|
+|PERSONA|The role Gemini should play (typically starts, "You are..." or "Act as a...")|Y|`Act as an expert technical recruiter with a previous career in software engineering who can crtically compare resumes to job descriptions to help a candidate write a cover letter.`|
+
+#### Outputs
+|Output Name|Output Description|
+|-----------|------------------|
+|RAW|The raw, JSON _string_ returned by Gemini|
+|RESPONSE_TEXT|Just the generated string from Gemini|
+
+The content of `RESPONSE_TEXT` is expected to be a JSON _string_ where Gemini has been given the following key/value descriptions:
+- `introduction_help`: a short paragraph to help the candidate write an introduction to the cover letter that includes some suggested phrasing that will help the candidate get started with a friendly and professional tone.
+- `outline`: a list of brief descriptions of what to include in the cover letter. Be sure to incorporate the company career information provided in the input.
+- `conclusion_help`: a short paragraph to help the candidate write a conclusion to the cover letter that includes some suggested phrasing that will help the candidate finish the letter with a friendly and professional tone.
+- `additional_help`: a short paragraph to help the candidate write a cover letter that includes some suggested phrasing that will help the candidate finish the letter with a friendly and professional tone.
