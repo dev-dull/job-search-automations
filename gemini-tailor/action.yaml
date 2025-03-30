@@ -62,8 +62,10 @@ runs:
               {
                 parts: [
                   {
-                    text: `Compare the resume, the job description with the goal of helping the candidate tailor their resume to the open position. Provide a JSON formatted response containing a list of the following key/value pairs for each position the candidate has held:
+                    text: `Compare the resume, the job description with the goal of helping the candidate tailor their resume to the open position. Provide a JSON formatted response containing a list of maps. There is one map in the list for each position the candidate has held. Each map contains the following key/value pairs:
+                    - company_name: The name of the company where the candidate has worked.
                     - position_name: The name of the position held by the candidate.
+                    - remove: Make a determination if the position should be removed from the resume entirely based on its relevance to the job description. If it is not relevant, set this to true, otherwise false.
                     - add_emphasis: A brief paragraph of the experience the candidate has from this position and should emphasize when applying to this role.
                     - remove_emphasis: A brief paragraph of the experience the candidate has from this position that may not be relevant to the job they are applying for and should be deemphasized or removed in the resume.
                     - errors: a list of spelling and grammar errors in the resume. If none are found, set the list to a single result that says "No errors found."
