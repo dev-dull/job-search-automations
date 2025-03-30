@@ -34,7 +34,7 @@ inputs:
   PERSONA:
     description: The persona to use for the system instruction. This is used to set the tone and style of the response.
     required: true
-    default: Act as an expert technical recruiter with a previous career in software engineering who can crtically compare resumes to job descriptions to help a candidate write a cover letter.
+    default: Act as an expert technical recruiter with a previous career in software engineering who can critically compare resumes to job descriptions to help a candidate write a cover letter.
 
 outputs:
   RAW:
