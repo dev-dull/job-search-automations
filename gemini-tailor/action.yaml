@@ -69,7 +69,7 @@ runs:
                     - add_emphasis: A brief paragraph of the experience the candidate has from this position and should emphasize when applying to this role.
                     - remove_emphasis: A brief paragraph of the experience the candidate has from this position that may not be relevant to the job they are applying for and should be deemphasized or removed in the resume.
                     - errors: a list of spelling and grammar errors in the resume. If none are found, set the list to a single result that says "No errors found."
-                    - suggested_wording: A list of specific wording the candidate should use to better align their resume with the job description. This should include keywords and phrases from the job description that are relevant to the candidate's experience.
+                    - suggested_wording: A list of specific wording the candidate should use to better align their resume with the job description. This should include keywords and phrases from the job description that are relevant to the candidate's experience. If you have no suggestions, set the list to a single item that says, "N/A"
                     - additional_help: Any additional suggestions for the candidate to consider when tailoring their resume for this position.
 
                     The JSON should be valid, parsable, use 2 spaces for indentation, and contain no additional formatting or comments.`
