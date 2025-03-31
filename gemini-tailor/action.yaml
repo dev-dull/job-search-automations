@@ -1,5 +1,5 @@
-name: Check Candidate Qualification (Gemini)
-description: Use Google Gemini to evaluate if a candidate is qualified for a job based on their resume and the job description.
+name: Suggest Resume Changes (Gemini)
+description: Use Google Gemini to suggest changes to a resume based on a provided job description.
 
 inputs:
   GOOGLE_API_KEY:
@@ -16,9 +16,6 @@ inputs:
     description: Resume Mime Type
     required: true
     default: text/plain
-  CAREER_GROWTH_KEYWORDS:
-    description: Words to look for in the job description that will help grow the candidate's career in the desired direction.
-    required: true
   JOB_DESCRIPTION:
     description: Job Description
     required: true
@@ -29,7 +26,7 @@ inputs:
   PERSONA:
     description: The persona to use for the system instruction. This is used to set the tone and style of the response.
     required: true
-    default: Act as an expert technical recruiter with a previous career in software engineering who can critically compare resumes to job descriptions to determine if a candidate is a fit for a role.
+    default: Act as an expert technical recruiter with a previous career in software engineering who can critically compare resumes to job descriptions to help a candidate tailor their resume to the open position.
 
 outputs:
   RAW:
@@ -42,7 +39,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Query Candidate Qualification
+    - name: Query Resume Suggestions
       id: gemini-check
       uses: actions/github-script@v7
       env:
@@ -50,7 +47,6 @@ runs:
         GEMINI_MODEL: ${{ inputs.GEMINI_MODEL }}
         RESUME_MIME_TYPE: ${{ inputs.RESUME_MIME_TYPE }}
         RESUME_TEXT: ${{ inputs.RESUME_TEXT }}
-        CAREER_GROWTH_KEYWORDS: ${{ inputs.CAREER_GROWTH_KEYWORDS }}
         JOB_DESCRIPTION_MIME_TYPE: ${{ inputs.JOB_DESCRIPTION_MIME_TYPE }}
         JOB_DESCRIPTION: ${{ inputs.JOB_DESCRIPTION }}
         PERSONA: ${{ inputs.PERSONA }}
@@ -66,21 +62,15 @@ runs:
               {
                 parts: [
                   {
-                    text: `Compare the resume and job description with the goal of helping the candidate tailor their resume for the position. Provide a JSON formatted response containing the following key/value pairs:
-                    - candidate_score: a score between 1 and 100 for how well the resume matches the job description.
-                    - career_growth_score: a score between 1 and 100 for words in the job description that are similar to the following: ${process.env.CAREER_GROWTH_KEYWORDS}
-                    - candidate_explanation: an explanation of the score no longer than 250 words.
-                    - candidate_deficiencies: a list of deficiencies in the resume that the candidate likely possesses, but could be better highlighted in the resume.
-                    - candidate_strengths: a list of strengths in the resume that the candidate possesses.
-                    - candidate_recommendations: a list of specific changes that the candidate should make to their resume to improve their chances of getting the job.
-                    - candidate_errors: a list of spelling and grammar errors in the resume. If none are found, set the list to a single result that says "No errors found."
-                    - job_description_score: a score between 1 and 100 for how well the job description is written.
-                    - job_description_explanation: an explanation of the job_description_score no longer than 250 words.
-                    - job_description_deficiencies: a list of deficiencies in the job description that the candidate should be aware of.
-                    - job_company_name: from the job description, identify the company name.
-                    - job_company_description: describe the company named in job_company_name in no more than 50 words.
-                    - job_company_sentiment_score: without referencing the job description or resume, provide a score between 1 and 100 for how well the company is likely to treat its employees.
-                    - job_company_explanation: without referencing the job description or resume, write an explanation of job_company_sentiment_score no longer than 250 words.
+                    text: `Compare the resume, the job description with the goal of helping the candidate tailor their resume to the open position. Provide a JSON formatted response containing a list of maps. There is one map in the list for each position the candidate has held. Each map contains the following key/value pairs:
+                    - company_name: The name of the company where the candidate has worked.
+                    - position_name: The name of the position held by the candidate.
+                    - remove: Make a determination if the position should be removed from the resume entirely based on its relevance to the job description. If it is not relevant, set this to true, otherwise false.
+                    - add_emphasis: A brief paragraph of the experience the candidate has from this position and should emphasize when applying to this role.
+                    - remove_emphasis: A brief paragraph of the experience the candidate has from this position that may not be relevant to the job they are applying for and should be deemphasized or removed in the resume.
+                    - errors: a list of spelling and grammar errors in the resume. If none are found, set the list to a single result that says "No errors found."
+                    - suggested_wording: A list of specific wording the candidate should use to better align their resume with the job description. This should include keywords and phrases from the job description that are relevant to the candidate's experience. If you have no suggestions, set the list to a single item that says, "N/A"
+                    - additional_help: Any additional suggestions for the candidate to consider when tailoring their resume for this position.
 
                     The JSON should be valid, parsable, use 2 spaces for indentation, and contain no additional formatting or comments.`
                   },
