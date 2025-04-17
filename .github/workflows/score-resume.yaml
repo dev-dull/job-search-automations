@@ -113,8 +113,11 @@ jobs:
                 .write()
             } catch (error) {
               core.summary
-                .addCodeBlock(process.env.RESPONSE_TEXT)
-                .addError(error.message)
+                .addHeading('Error parsing JSON response')
+                .addHeading('Response Text', 2)
+                .addCodeBlock(process.env.RAW)
+                .addHeading('Error message', 2)
+                .addCodeBlock(error.message)
                 .write()
               core.setFailed(`Error parsing JSON response: ${error.message}`);
             }
