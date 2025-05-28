@@ -65,7 +65,6 @@ jobs:
         uses: dev-dull/job-search-automations/gemini-qualified@v1.0.1
         with:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          GEMINI_MODEL: gemini-2.0-flash
           RESUME_TEXT: ${{ env.RESUME_TEXT }}
           JOB_DESCRIPTION: ${{ env.JOB_DESCRIPTION_TEXT }}
           CAREER_GROWTH_KEYWORDS: input.career_growth_keywords
