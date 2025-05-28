@@ -57,10 +57,9 @@ jobs:
             core.exportVariable('COMPANY_CAREER_INFO_TEXT', companyCareerInfoText)
       - name: Run gemini-cover-outline action
         id: gemini-apply
-        uses: dev-dull/job-search-automations/gemini-cover-outline@apply_yourself
+        uses: dev-dull/job-search-automations/gemini-cover-outline@v1.0.2
         with:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          GEMINI_MODEL: gemini-2.0-flash
           RESUME_TEXT: ${{ env.RESUME_TEXT }}
           JOB_DESCRIPTION: ${{ env.JOB_DESCRIPTION_TEXT }}
           COMPANY_CAREER_INFO: ${{ env.COMPANY_CAREER_INFO_TEXT }}
@@ -76,7 +75,7 @@ jobs:
               console.log(JSON.stringify(response, null, 2));
 
               core.summary
-                .addHeading('Intoduction Tips')
+                .addHeading('Introduction Tips')
                 .addRaw(response.introduction_help)
                 .addHeading('Cover Letter Outline')
                 .addList(response.outline)
