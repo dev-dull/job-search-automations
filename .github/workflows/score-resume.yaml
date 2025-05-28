@@ -62,7 +62,7 @@ jobs:
 
       - name: Run gemini-qualified action
         id: gemini-check
-        uses: dev-dull/job-search-automations/gemini-qualified@v1.0.1
+        uses: dev-dull/job-search-automations/gemini-qualified@v1.0.0
         with:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           RESUME_TEXT: ${{ env.RESUME_TEXT }}
