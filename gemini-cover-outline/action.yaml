@@ -8,7 +8,7 @@ inputs:
   GEMINI_MODEL:
     description: Gemini Model
     required: true
-    default: gemini-2.0-flash
+    default: gemini-2.5-flash
   RESUME_TEXT:
     description: Resume Text
     required: true
