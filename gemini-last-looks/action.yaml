@@ -51,6 +51,7 @@ runs:
           const fs = require('fs')
 
           const resumeContent = fs.readFileSync(process.env.RESUME_PATH).toString('base64');
+          console.log(resumeContent);
           const payload = {
             system_instruction: {
               parts: {
