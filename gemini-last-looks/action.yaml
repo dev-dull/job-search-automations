@@ -48,6 +48,8 @@ runs:
         PERSONA: ${{ inputs.PERSONA }}
       with:
         script: |
+          const fs = require('fs')
+
           const resumeContent = fs.readFileSync(process.env.RESUME_PATH).toString('base64');
           const payload = {
             system_instruction: {
