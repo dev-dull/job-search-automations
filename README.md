@@ -9,7 +9,7 @@ Uses the free tier of Google Gemini to compare a resume to a job description and
 |Input Name|Input Description|Required Y/N|Default Value|
 |----------|-----------------|------------|-------------|
 |GOOGLE_API_KEY|Google API key for Gemini|Y||
-|GEMINI_MODEL|The Gemini model to use (as found in the API URL)|Y|`gemini-2.0-flash`|
+|GEMINI_MODEL|The Gemini model to use (as found in the API URL)|Y|`gemini-2.5-flash-preview-05-20`|
 |RESUME_TEXT|The body of the resume to evaluate|Y||
 |RESUME_MIME_TYPE|The http mime type for the resume format|Y|`text/plain`|
 |CAREER_GROWTH_KEYWORDS|A list of keywords used to create a score to evaluate if the position will take your career in the desired direction|Y||
@@ -45,7 +45,7 @@ Uses the free tier of Google Gemini to compare a resume to a job description to 
 |Input Name|Input Description|Required Y/N|Default Value|
 |----------|-----------------|------------|-------------|
 |GOOGLE_API_KEY|Google API key for Gemini|Y||
-|GEMINI_MODEL|The Gemini model to use (as found in the API URL)|Y|`gemini-2.0-flash`|
+|GEMINI_MODEL|The Gemini model to use (as found in the API URL)|Y|`gemini-2.5-flash-preview-05-20`|
 |RESUME_TEXT|The body of the resume to evaluate|Y||
 |RESUME_MIME_TYPE|The http mime type for the resume format|Y|`text/plain`|
 |JOB_DESCRIPTION|The body of the job description to evaluate|Y||
@@ -75,7 +75,7 @@ Uses the free tier of Google Gemini to compare a resume to a job description and
 |Input Name|Input Description|Required Y/N|Default Value|
 |----------|-----------------|------------|-------------|
 |GOOGLE_API_KEY|Google API key for Gemini|Y||
-|GEMINI_MODEL|The Gemini model to use (as found in the API URL)|Y|`gemini-2.0-flash`|
+|GEMINI_MODEL|The Gemini model to use (as found in the API URL)|Y|`gemini-2.5-flash-preview-05-20`|
 |RESUME_TEXT|The body of the resume to evaluate|Y||
 |RESUME_MIME_TYPE|The http mime type for the resume format|Y|`text/plain`|
 |JOB_DESCRIPTION|The body of the job description to evaluate|Y||
@@ -95,6 +95,32 @@ The content of `RESPONSE_TEXT` is expected to be a JSON _string_ where Gemini ha
 - `outline`: a list of brief descriptions of what to include in the cover letter. Be sure to incorporate the company career information provided in the input.
 - `conclusion_help`: a short paragraph to help the candidate write a conclusion to the cover letter that includes some suggested phrasing that will help the candidate finish the letter with a friendly and professional tone.
 - `additional_help`: a short paragraph to help the candidate write a cover letter that includes some suggested phrasing that will help the candidate finish the letter with a friendly and professional tone.
+
+
+### dev-dull/job-search-automations/gemini-last-looks
+Uses the free tier of Google Gemini to check a resume for errors and final recommendations before submitting a resume to a job application.
+#### Inputs
+|Input Name|Input Description|Required Y/N|Default Value|
+|----------|-----------------|------------|-------------|
+|GOOGLE_API_KEY|Google API key for Gemini|Y||
+|GEMINI_MODEL|The Gemini model to use (as found in the API URL)|Y|`gemini-2.5-flash-preview-05-20`|
+|RESUME_FILENAME|The path and filename of the resume|Y||
+|RESUME_MIME_TYPE|The http mime type for the resume format|Y|`application/pdf`|
+|PERSONA|The role Gemini should play (typically starts, "You are..." or "Act as a...")|Y|`Act as an expert technical recruiter with a previous career in software engineering who can critically review a resume to identify errors and omissions before the candidate applies to an open position.`|
+
+#### Outputs
+|Output Name|Output Description|
+|-----------|------------------|
+|RAW|The full, raw JSON _string_ returned by Gemini|
+|RESPONSE_TEXT|Just the generated string from Gemini|
+
+The content of `RESPONSE_TEXT` is expected to be a JSON _string_ where Gemini has been given the following key/value descriptions:
+- `errors`: a list of spelling and grammar errors in the resume. If none are found, set the list to a single result that says "No errors found."
+- `ats_score`: a score between 1 and 100 on if the formatting appears to be simple enough for an Applicant Tracking System (ATS) to parse.
+- `ats_explanation`: an explanation of the score no longer than 250 words.
+- `ats_recommendations`: a list of specific changes that the candidate should make to their resume to improve their chances of passing an ATS.
+- `conciseness_recommendations`: a list of specific changes that the candidate should make to their resume to improve its conciseness.
+
 
 ## Deprecated Actions
 ### dev-dull/job-search-automations/gemini-rewrite@v0.3.0
