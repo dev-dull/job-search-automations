@@ -38,7 +38,7 @@ jobs:
           git tag "v${MAJOR}.${MINOR}"
           git push origin "v${MAJOR}" "v${MAJOR}.${MINOR}"
         env:
-          GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cut Release
         uses: softprops/action-gh-release@v2
