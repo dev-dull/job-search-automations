@@ -8,8 +8,7 @@ inputs:
   GEMINI_MODEL:
     description: Gemini Model
     required: true
-    # The name says 'preview' but is publicly displayed as 'Gemini 2.5 Flash'
-    default: gemini-2.5-flash-preview-05-20
+    default: gemini-2.5-flash
   RESUME_TEXT:
     description: Resume Text
     required: true

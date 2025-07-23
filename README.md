@@ -9,7 +9,7 @@ Uses the free tier of Google Gemini to compare a resume to a job description and
 |Input Name|Input Description|Required Y/N|Default Value|
 |----------|-----------------|------------|-------------|
 |GOOGLE_API_KEY|Google API key for Gemini|Y||
-|GEMINI_MODEL|The Gemini model to use (as found in the API URL)|Y|`gemini-2.5-flash-preview-05-20`|
+|GEMINI_MODEL|The Gemini model to use (as found in the API URL)|Y|`gemini-2.5-flash`|
 |RESUME_TEXT|The body of the resume to evaluate|Y||
 |RESUME_MIME_TYPE|The http mime type for the resume format|Y|`text/plain`|
 |CAREER_GROWTH_KEYWORDS|A list of keywords used to create a score to evaluate if the position will take your career in the desired direction|Y||
@@ -45,7 +45,7 @@ Uses the free tier of Google Gemini to compare a resume to a job description to 
 |Input Name|Input Description|Required Y/N|Default Value|
 |----------|-----------------|------------|-------------|
 |GOOGLE_API_KEY|Google API key for Gemini|Y||
-|GEMINI_MODEL|The Gemini model to use (as found in the API URL)|Y|`gemini-2.5-flash-preview-05-20`|
+|GEMINI_MODEL|The Gemini model to use (as found in the API URL)|Y|`gemini-2.5-flash`|
 |RESUME_TEXT|The body of the resume to evaluate|Y||
 |RESUME_MIME_TYPE|The http mime type for the resume format|Y|`text/plain`|
 |JOB_DESCRIPTION|The body of the job description to evaluate|Y||
@@ -75,7 +75,7 @@ Uses the free tier of Google Gemini to compare a resume to a job description and
 |Input Name|Input Description|Required Y/N|Default Value|
 |----------|-----------------|------------|-------------|
 |GOOGLE_API_KEY|Google API key for Gemini|Y||
-|GEMINI_MODEL|The Gemini model to use (as found in the API URL)|Y|`gemini-2.5-flash-preview-05-20`|
+|GEMINI_MODEL|The Gemini model to use (as found in the API URL)|Y|`gemini-2.5-flash`|
 |RESUME_TEXT|The body of the resume to evaluate|Y||
 |RESUME_MIME_TYPE|The http mime type for the resume format|Y|`text/plain`|
 |JOB_DESCRIPTION|The body of the job description to evaluate|Y||
@@ -103,7 +103,7 @@ Uses the free tier of Google Gemini to check a resume for errors and final recom
 |Input Name|Input Description|Required Y/N|Default Value|
 |----------|-----------------|------------|-------------|
 |GOOGLE_API_KEY|Google API key for Gemini|Y||
-|GEMINI_MODEL|The Gemini model to use (as found in the API URL)|Y|`gemini-2.5-flash-preview-05-20`|
+|GEMINI_MODEL|The Gemini model to use (as found in the API URL)|Y|`gemini-2.5-flash`|
 |RESUME_FILENAME|The path and filename of the resume|Y||
 |RESUME_MIME_TYPE|The http mime type for the resume format|Y|`application/pdf`|
 |PERSONA|The role Gemini should play (typically starts, "You are..." or "Act as a...")|Y|`Act as an expert technical recruiter with a previous career in software engineering who can critically review a resume to identify errors and omissions before the candidate applies to an open position.`|
