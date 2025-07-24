@@ -26,6 +26,7 @@ jobs:
           WITH_V: true
 
       - name: Create additional tags
+        # There has to be a better way to do this, but none of the tagging actions appear to support this natively.
         if: ${{ steps.bump_version.outputs.new_tag != '' }}
         run: |
           # Extract major, minor, and patch versions
@@ -33,12 +34,16 @@ jobs:
           MAJOR=$(echo $NEW_TAG | cut -d. -f1)
           MINOR=$(echo $NEW_TAG | cut -d. -f2)
 
+          repoURL=$(git remote get-url origin | sed "s/github\.com/${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/1")
+          git remote set-url origin ${repoURL}
+
           # Create and push vMAJOR and vMAJOR.MINOR tags
           git tag "v${MAJOR}"
           git tag "v${MAJOR}.${MINOR}"
           git push origin "v${MAJOR}" "v${MAJOR}.${MINOR}"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_USERNAME: dev-dull
+          GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
 
       - name: Cut Release
         uses: softprops/action-gh-release@v2
