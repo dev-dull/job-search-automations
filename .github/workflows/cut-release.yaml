@@ -44,6 +44,7 @@ jobs:
           git tag "${MAJOR}.${MINOR}"
           git push origin "${MAJOR}" "${MAJOR}.${MINOR}"
         env:
+          # TODO: with the 'contents: write' permission, the secrets.GITHUB_TOKEN _should_ be sufficient.
           GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
 
       - name: Cut Release
