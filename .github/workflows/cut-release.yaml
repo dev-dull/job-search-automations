@@ -37,6 +37,9 @@ jobs:
           repoURL=$(git remote get-url origin | sed "s/github\.com/${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/1")
           echo "x${repoURL}x"
           git remote set-url origin "${repoURL}"
+          echo 'xs'
+          git remote get-url origin
+          echo 'xe'
 
           # Create and push vMAJOR and vMAJOR.MINOR tags
           git tag "v${MAJOR}"
