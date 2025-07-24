@@ -40,9 +40,9 @@ jobs:
           MINOR=$(echo $NEW_TAG | cut -d. -f2)
 
           # Create and push vMAJOR and vMAJOR.MINOR tags
-          git tag "v${MAJOR}"
-          git tag "v${MAJOR}.${MINOR}"
-          git push origin "v${MAJOR}" "v${MAJOR}.${MINOR}"
+          git tag "${MAJOR}"
+          git tag "${MAJOR}.${MINOR}"
+          git push origin "${MAJOR}" "${MAJOR}.${MINOR}"
         env:
           GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
 
