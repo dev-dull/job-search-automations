@@ -35,8 +35,8 @@ jobs:
           MINOR=$(echo $NEW_TAG | cut -d. -f2)
 
           repoURL=$(git remote get-url origin | sed "s/github\.com/${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/1")
-          echo x${repoURL}x
-          git remote set-url origin ${repoURL}
+          echo "x${repoURL}x"
+          git remote set-url origin "${repoURL}"
 
           # Create and push vMAJOR and vMAJOR.MINOR tags
           git tag "v${MAJOR}"
