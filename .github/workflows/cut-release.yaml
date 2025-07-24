@@ -11,6 +11,8 @@ on:
 jobs:
   create_version_and_release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -30,26 +32,18 @@ jobs:
         if: ${{ steps.bump_version.outputs.new_tag != '' }}
         run: |
           # Configure git to use the GITHUB_TOKEN for authentication
-          git config --global url."https://x-access-token:${{ secrets.REPO_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          # git config --global url."https://x-access-token:${{ secrets.REPO_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
           # Extract major, minor, and patch versions
           NEW_TAG=${{ steps.bump_version.outputs.new_tag }}
           MAJOR=$(echo $NEW_TAG | cut -d. -f1)
           MINOR=$(echo $NEW_TAG | cut -d. -f2)
 
-          # repoURL=$(git remote get-url origin | sed "s/github\.com/${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/1")
-          # echo "x${repoURL}x"
-          # git remote set-url origin "${repoURL}"
-          # echo 'xs'
-          # git remote get-url origin
-          # echo 'xe'
-
           # Create and push vMAJOR and vMAJOR.MINOR tags
           git tag "v${MAJOR}"
           git tag "v${MAJOR}.${MINOR}"
           git push origin "v${MAJOR}" "v${MAJOR}.${MINOR}"
         env:
-          GITHUB_USERNAME: dev-dull
           GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
 
       - name: Cut Release
