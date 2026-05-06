@@ -35,14 +35,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ github.event.inputs.resume_repository }}
           ref: ${{ github.event.inputs.branch }}
           token: ${{ secrets.REPO_TOKEN }}
 
       - name: Set Resume, Job Description, Career Info Text
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs')
@@ -57,14 +57,14 @@ jobs:
             core.exportVariable('COMPANY_CAREER_INFO_TEXT', companyCareerInfoText)
       - name: Run gemini-cover-outline action
         id: gemini-apply
-        uses: dev-dull/job-search-automations/gemini-cover-outline@v1.0.2
+        uses: dev-dull/job-search-automations/gemini-cover-outline@v1
         with:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           RESUME_TEXT: ${{ env.RESUME_TEXT }}
           JOB_DESCRIPTION: ${{ env.JOB_DESCRIPTION_TEXT }}
           COMPANY_CAREER_INFO: ${{ env.COMPANY_CAREER_INFO_TEXT }}
       - name: Output cover letter outline
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           RAW: ${{ steps.gemini-apply.outputs.RAW }}
           RESPONSE_TEXT: ${{ steps.gemini-apply.outputs.RESPONSE_TEXT }}
