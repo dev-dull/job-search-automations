@@ -8,7 +8,7 @@ inputs:
   GEMINI_MODEL:
     description: Gemini Model
     required: true
-    default: gemini-2.5-flash
+    default: gemini-flash-latest
   RESUME_TEXT:
     description: Resume Text
     required: true
@@ -49,7 +49,7 @@ runs:
   steps:
     - name: Compare Candidate Qualifications for Cover Letter Outline
       id: gemini-check
-      uses: actions/github-script@v7
+      uses: actions/github-script@v9
       env:
         GOOGLE_API_KEY: ${{ inputs.GOOGLE_API_KEY }}
         GEMINI_MODEL: ${{ inputs.GEMINI_MODEL }}

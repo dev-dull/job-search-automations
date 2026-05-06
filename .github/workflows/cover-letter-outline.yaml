@@ -42,7 +42,7 @@ jobs:
           token: ${{ secrets.REPO_TOKEN }}
 
       - name: Set Resume, Job Description, Career Info Text
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs')
@@ -64,7 +64,7 @@ jobs:
           JOB_DESCRIPTION: ${{ env.JOB_DESCRIPTION_TEXT }}
           COMPANY_CAREER_INFO: ${{ env.COMPANY_CAREER_INFO_TEXT }}
       - name: Output cover letter outline
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           RAW: ${{ steps.gemini-apply.outputs.RAW }}
           RESPONSE_TEXT: ${{ steps.gemini-apply.outputs.RESPONSE_TEXT }}
