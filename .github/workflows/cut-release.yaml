@@ -39,10 +39,11 @@ jobs:
           MAJOR=$(echo $NEW_TAG | cut -d. -f1)
           MINOR=$(echo $NEW_TAG | cut -d. -f2)
 
-          # Create and push vMAJOR and vMAJOR.MINOR tags
-          git tag "${MAJOR}"
-          git tag "${MAJOR}.${MINOR}"
-          git push origin "${MAJOR}" "${MAJOR}.${MINOR}"
+          # Create/move vMAJOR and vMAJOR.MINOR alias tags. -f is required
+          # because these aliases already exist from prior releases.
+          git tag -f "${MAJOR}"
+          git tag -f "${MAJOR}.${MINOR}"
+          git push origin --force "${MAJOR}" "${MAJOR}.${MINOR}"
         env:
           # TODO: with the 'contents: write' permission, the secrets.GITHUB_TOKEN _should_ be sufficient.
           GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
