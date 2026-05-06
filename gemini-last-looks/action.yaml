@@ -75,7 +75,22 @@ runs:
                   }
                 ]
               }
-            ]
+            ],
+            generationConfig: {
+              temperature: 0,
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: "object",
+                properties: {
+                  errors: { type: "array", items: { type: "string" } },
+                  ats_score: { type: "integer", minimum: 1, maximum: 100 },
+                  ats_explanation: { type: "string" },
+                  ats_recommendations: { type: "array", items: { type: "string" } },
+                  conciseness_recommendations: { type: "array", items: { type: "string" } }
+                },
+                required: ["errors", "ats_score", "ats_explanation", "ats_recommendations", "conciseness_recommendations"]
+              }
+            }
           };
 
           const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL}:generateContent?key=${process.env.GOOGLE_API_KEY}`, {
@@ -88,8 +103,7 @@ runs:
 
           const data = await response.json();
           console.log('Gemini response:', JSON.stringify(data, null, 2));
-          let resultText = data.candidates[0].content.parts[0].text;
-          resultText = resultText.replace(/```json|```/g, '').trim();
+          const resultText = data.candidates[0].content.parts[0].text;
 
           core.setOutput('RAW', JSON.stringify(data, null, 2));
           core.setOutput('RESPONSE_TEXT', resultText);
