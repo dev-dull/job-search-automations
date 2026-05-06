@@ -57,7 +57,7 @@ jobs:
             core.exportVariable('COMPANY_CAREER_INFO_TEXT', companyCareerInfoText)
       - name: Run gemini-cover-outline action
         id: gemini-apply
-        uses: dev-dull/job-search-automations/gemini-cover-outline@v1
+        uses: dev-dull/job-search-automations/gemini-cover-outline@961e528e79f22f7b86ed2d01329194cfd8950b81
         with:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           RESUME_TEXT: ${{ env.RESUME_TEXT }}
