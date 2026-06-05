@@ -29,11 +29,28 @@ _TRACKING_PARAMS = {
 # Path patterns that carry a Greenhouse posting id directly in the URL path
 # rather than in a `gh_jid` query param.
 _GREENHOUSE_PATH = re.compile(r"^/[^/]+/jobs/(\d+)/?$")
-# Ashby direct-post URL: jobs.ashbyhq.com/<org>/<uuid>
-_ASHBY_PATH = re.compile(
-    r"^/[^/]+/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})/?$",
-    re.IGNORECASE,
-)
+_UUID = r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"
+# Ashby/Lever direct-post URL: <host>/<org>/<uuid>, optionally followed by a
+# trailing segment such as `/application` (Ashby) or `/apply` (Lever).
+_ASHBY_PATH = re.compile(rf"^/[^/]+/({_UUID})(?:/.*)?$", re.IGNORECASE)
+_LEVER_PATH = re.compile(rf"^/[^/]+/({_UUID})(?:/.*)?$", re.IGNORECASE)
+# LinkedIn posting id in the path: /jobs/view/<id>
+_LINKEDIN_PATH = re.compile(r"/jobs/view/(\d+)")
+
+
+def _workday_reqid(path):
+    """The requisition id trailing a Workday job slug ("..._JR2017916").
+
+    It identifies the posting regardless of locale prefix (`/en-US/`), an
+    optional location path segment, or query string, so it's the natural
+    dedupe anchor. The reqid is the final underscore-delimited token of the
+    last path segment and always contains a digit (JR2017916, R-056651,
+    26WD95712-1)."""
+    seg = (path or "").rstrip("/").rsplit("/", 1)[-1]
+    head, sep, tail = seg.rpartition("_")
+    if sep and any(c.isdigit() for c in tail):
+        return tail
+    return None
 
 
 def canonicalize_url(url):
@@ -78,20 +95,50 @@ def compute_dedupe_key(url):
         m = _GREENHOUSE_PATH.match(u.path or "")
         if m:
             gh_jid = m.group(1)
+        elif (u.path or "").startswith("/embed/job_app"):
+            # job_app embed (`/embed/job_app?token=<job_id>`): the token IS the
+            # numeric posting id (distinct from the `?for=<board>` board token).
+            tok = params.get("token", [None])[0]
+            if tok and tok.isdigit():
+                gh_jid = tok
     if gh_jid:
         return f"gh:{gh_jid}"
+
+    netloc = u.netloc or ""
+
+    # Workday: dedupe on host + requisition id so locale (`/en-US/`), an
+    # optional location path segment, and query-string variants all collapse.
+    if "myworkdayjobs.com" in netloc:
+        reqid = _workday_reqid(u.path)
+        if reqid:
+            return f"wd:{netloc}:{reqid}"
+
+    # LinkedIn: the numeric job id, whether in `/jobs/view/<id>` or as the
+    # `currentJobId=<id>` param on a search/collections URL.
+    if "linkedin.com" in netloc:
+        m = _LINKEDIN_PATH.search(u.path or "")
+        lid = m.group(1) if m else params.get("currentJobId", [None])[0]
+        if lid:
+            return f"linkedin:{lid}"
 
     # Ashby: same idea. `ashby_jid` query param (embed wrapper on any host,
     # e.g. www.ashbyhq.com/careers?ashby_jid=<uuid>) or UUID-on-path on
     # jobs.ashbyhq.com.
     ashby_jid = params.get("ashby_jid", [None])[0]
-    if not ashby_jid and (u.netloc or "") == "jobs.ashbyhq.com":
+    if not ashby_jid and netloc == "jobs.ashbyhq.com":
         m = _ASHBY_PATH.match(u.path or "")
         if m:
             ashby_jid = m.group(1)
     if ashby_jid:
         # First UUID stanza is unique within Ashby; shorter key.
         return f"ashby:{ashby_jid.split('-')[0]}"
+
+    # Lever: UUID on path (jobs.lever.co/<company>/<uuid>), with optional
+    # trailing `/apply` and `?lever-source=` tracking already stripped above.
+    if netloc == "jobs.lever.co":
+        m = _LEVER_PATH.match(u.path or "")
+        if m:
+            return f"lever:{m.group(1).split('-')[0]}"
 
     # Fall through to canonical URL for non-Greenhouse/Ashby postings. Two
     # URLs that differ only in tracking params / trailing slash converge here.
