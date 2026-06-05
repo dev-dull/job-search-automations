@@ -167,3 +167,15 @@ Uses the free tier of Google Gemini to compare a resume to a job description and
 |RESPONSE_TEXT|Just the generated string from Gemini|
 
 The content of `RESPONSE_TEXT` is expected to the modified resume written in an HTML format.
+
+
+## License
+
+Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+
+This is a **source-available, noncommercial** license — not an OSI-approved "open source" license, because it restricts commercial use (which the Open Source Definition does not permit). In short:
+
+- **Allowed:** any noncommercial use — individuals, personal/hobby projects, nonprofits and charities, schools and universities, public research, and government use.
+- **Not allowed:** commercial use, including a company using it internally for commercial advantage.
+
+See [`LICENSE`](LICENSE) for the authoritative terms; the summary above is not a substitute for it. For commercial-use inquiries, contact the author.
