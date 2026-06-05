@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Job Inbox</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <h1>Job Inbox</h1>
+    <div style="display: flex; gap: 1rem; margin-bottom: 0.5rem; font-weight: 600;">
+      <a href="/" style="text-decoration: underline;">Inbox</a>
+      <a href="/companies">Companies</a>
+    </div>
+    <nav>
+      <a href="?status=open" class="{{ 'active' if filter_status == 'open' else '' }}">Open ({{ counts.open or 0 }})</a>
+      <a href="?status=applied" class="{{ 'active' if filter_status == 'applied' else '' }}">Applied ({{ counts.applied or 0 }})</a>
+      <a href="?status=closed" class="{{ 'active' if filter_status == 'closed' else '' }}">Closed ({{ counts.closed or 0 }})</a>
+      <a href="?status=all" class="{{ 'active' if filter_status == 'all' else '' }}">All ({{ counts.total or 0 }})</a>
+    </nav>
+    <div class="stats">
+      <span><strong>{{ stats.total_applied }}</strong> applied</span>
+      <span><strong>{{ stats.total_callbacks }}</strong> callbacks ({{ stats.callback_rate_pct }}%)</span>
+      <span><strong>{{ stats.total_offers }}</strong> offers</span>
+      <form method="post" action="/admin/rerank" class="inline">
+        <button type="submit" class="link">re-rank all</button>
+      </form>
+      <form method="post" action="/admin/cleanup" class="inline cleanup-form"
+            onsubmit="return confirm('Delete unscored / non-applied jobs older than ' + this.days.value + ' days or whose URLs no longer resolve? Applied jobs are kept.');">
+        <input type="hidden" name="status" value="{{ filter_status }}">
+        <label class="cleanup-label">cleanup
+          <input type="number" name="days" value="{{ cleanup_days }}" min="1" max="365" class="cleanup-days">
+          d
+        </label>
+        <button type="submit" class="link">clean up stale</button>
+      </form>
+    </div>
+    {% if cleanup_summary %}
+      <div class="cleanup-summary">
+        Cleanup done: {{ cleanup_summary.total }} removed
+        ({{ cleanup_summary.age }} aged out, {{ cleanup_summary.dead }} dead links).
+      </div>
+    {% endif %}
+  </header>
+
+  <main>
+    {% if not jobs %}
+      <p class="empty">No jobs in this view yet.</p>
+    {% endif %}
+
+    {% for job in jobs %}
+      <article class="job rec-{{ job.recommendation or 'unknown' }}">
+        <div class="rank-col">
+          <div class="rank">{{ "%.0f"|format(job.rank_score) if job.rank_score is not none else '—' }}</div>
+          <div class="fit">fit {{ job.fit_score|int if job.fit_score is not none else '—' }}</div>
+          {% if job.discovered_by and job.discovered_by.startswith('poller:') %}
+            <div class="poller-badge" title="Auto-discovered by {{ job.discovered_by[7:] }} poller">🤖</div>
+          {% endif %}
+        </div>
+
+        <div class="info">
+          <a href="{{ job.url }}" target="_blank" rel="noopener" class="title">
+            {{ job.company or 'Unknown' }} <span class="dim">—</span> {{ job.title or '(no title)' }}
+          </a>
+          <div class="meta">
+            <span class="ats">{{ job.ats_platform or 'unknown ATS' }}</span>
+            <span class="age">{{ job.age_label }}</span>
+            <span class="status status-{{ job.status }}">{{ job.status }}</span>
+            {% if job.recommendation %}
+              <span class="rec rec-pill rec-{{ job.recommendation }}">{{ job.recommendation.replace('_', ' ') }}</span>
+            {% endif %}
+          </div>
+          {% if job.summary %}
+            <p class="summary">{{ job.summary }}</p>
+          {% endif %}
+          {% if job.strengths or job.gaps %}
+            <details class="analysis">
+              <summary>Analysis</summary>
+              {% if job.strengths %}
+                <h4>Strengths</h4>
+                <ul>{% for s in job.strengths %}<li>{{ s }}</li>{% endfor %}</ul>
+              {% endif %}
+              {% if job.gaps %}
+                <h4>Gaps</h4>
+                <ul>{% for g in job.gaps %}<li>{{ g }}</li>{% endfor %}</ul>
+              {% endif %}
+            </details>
+          {% endif %}
+        </div>
+
+        <div class="actions">
+          {% if job.status in ['discovered', 'ranked'] %}
+            <form method="post" action="/jobs/{{ job.id }}/apply">
+              <input type="hidden" name="branch" value="">
+              <button class="primary" title="Mark this position as one you've applied to (does not open the application page)">Mark applied</button>
+            </form>
+            <form method="post" action="/jobs/{{ job.id }}/dismiss">
+              <button>Dismiss</button>
+            </form>
+          {% elif job.status == 'applied' %}
+            <div class="branch">{{ job.branch or '—' }}</div>
+            <details class="outcome-form">
+              <summary>Outcome</summary>
+              <form method="post" action="/jobs/{{ job.id }}/outcome">
+                <label><input type="checkbox" name="referral" {{ 'checked' if job.referral }}> referral</label>
+                <label><input type="checkbox" name="callback" {{ 'checked' if job.callback }}> callback</label>
+                <label><input type="checkbox" name="ghosted" {{ 'checked' if job.ghosted }}> ghosted</label>
+                <label><input type="checkbox" name="rejected" {{ 'checked' if job.rejected }}> rejected</label>
+                <label><input type="checkbox" name="offer" {{ 'checked' if job.offer }}> offer</label>
+                <textarea name="notes" rows="2" placeholder="notes...">{{ job.notes or '' }}</textarea>
+                <button type="submit" class="primary">Save</button>
+              </form>
+            </details>
+          {% endif %}
+        </div>
+      </article>
+    {% endfor %}
+  </main>
+</body>
+</html>

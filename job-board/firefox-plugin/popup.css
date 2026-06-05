@@ -1,0 +1,215 @@
+* { box-sizing: border-box; }
+
+body {
+  width: 380px;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  color: #1a1a1a;
+  background: #fff;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+header h1 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+header a {
+  color: #666;
+  text-decoration: none;
+  font-size: 16px;
+}
+
+main {
+  padding: 14px;
+}
+
+p { margin: 0 0 10px; }
+
+button {
+  font-size: 13px;
+  padding: 6px 14px;
+  border: 1px solid #ccc;
+  background: #fafafa;
+  border-radius: 4px;
+  cursor: pointer;
+}
+button.primary {
+  background: #1a1a1a;
+  color: #fff;
+  border-color: #1a1a1a;
+}
+button.secondary {
+  background: #fff;
+  margin-top: 10px;
+}
+button:hover { opacity: 0.85; }
+
+textarea {
+  width: 100%;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  resize: vertical;
+}
+
+.empty, .empty-hint { color: #555; }
+.empty-hint { font-size: 12px; margin-bottom: 6px; }
+
+.actions-prompt {
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: #1a1a1a;
+}
+
+.spinner {
+  width: 22px; height: 22px;
+  border: 2px solid #e0e0e0;
+  border-top-color: #333;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin: 12px auto 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.error { color: #b00020; }
+
+.score-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.score-circle {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  background: #eee;
+  color: #333;
+  flex-shrink: 0;
+}
+.score-circle.s-strong { background: #d4edda; color: #155724; }
+.score-circle.s-consider { background: #d1ecf1; color: #0c5460; }
+.score-circle.s-weak { background: #fff3cd; color: #856404; }
+.score-circle.s-skip { background: #f8d7da; color: #721c24; }
+
+.recommendation {
+  flex: 1;
+}
+.rec-label {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+.ats { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+.subscores {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.subscore {
+  font-size: 11px;
+  color: #4a5b6f;
+  background: #eef2f7;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.explanation-text {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #333;
+  white-space: pre-wrap;
+}
+
+.summary {
+  background: #f5f5f5;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-style: italic;
+}
+
+details { margin-bottom: 8px; }
+summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+details ul { margin: 4px 0 8px; padding-left: 20px; }
+details li { margin-bottom: 4px; }
+
+.meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #888;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eee;
+}
+
+.cache-info { font-family: monospace; }
+
+.save-status {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.save-status.ok { background: #d4edda; color: #155724; }
+.save-status.warn { background: #fff3cd; color: #856404; }
+.save-status.err { background: #f8d7da; color: #721c24; }
+
+.cache-notice {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  background: #eef2f7;
+  color: #4a5b6f;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.watch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #f7f9fc;
+  border-bottom: 1px solid #e5e5e5;
+  font-size: 12px;
+}
+/* Class selector beats [hidden]'s default `display: none` on specificity ties
+   (both 0,1,0; .watch-bar declared later wins). Re-assert here so toggling
+   the `hidden` attribute from JS actually hides the bar. */
+.watch-bar[hidden] { display: none; }
+.watch-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+.watch-btn.is-watched {
+  background: #d4edda;
+  border-color: #b6dfc1;
+  color: #155724;
+  cursor: default;
+}
+.watch-status {
+  color: #555;
+}
+.watch-status.err { color: #b00020; }

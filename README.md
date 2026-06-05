@@ -1,6 +1,27 @@
 # Job Search Automations
 A collection of tools to help identify jobs and apply to them.
 
+The repo holds two distinct surfaces:
+
+1. **Job Board** (`job-board/`): a runtime stack you self-host. Flask + SQLite backend, a CLI poller that walks targeted companies' ATS feeds, and a Firefox extension that scores postings as you browse. Server-side scoring against Anthropic. See [`job-board/README.md`](job-board/README.md).
+2. **GitHub Actions** (below): composite actions a separate resume-as-code repo invokes at commit time to qualify, tailor, and last-look a resume against a specific job description using Google Gemini.
+
+The two surfaces are independent. You can use either without the other.
+
+## Job Board
+
+Three components living together in [`job-board/`](job-board/):
+
+| Component | Role |
+|---|---|
+| **job-store** | Flask + SQLite backend. Inbox UI, scoring endpoint, dedupe, ranking math. |
+| **poller** | CLI that watches `company_targets` and posts new openings to job-store. |
+| **firefox-plugin** | Browser extension that scores postings via job-store and surfaces a "watch this company" button. |
+
+Both the plugin and the poller POST job descriptions to job-store without a fit score. job-store calls Anthropic with the resume and the prompt, persists the analysis, returns the score. Neither the plugin nor the poller ever sees the API key.
+
+See [`job-board/README.md`](job-board/README.md) for the architecture diagram, configuration, and local-run instructions.
+
 ## GitHub Actions
 ### dev-dull/job-search-automations/gemini-qualified
 Uses the free tier of Google Gemini to compare a resume to a job description and ranks if the position is a good fit with a score between 1 and 100.

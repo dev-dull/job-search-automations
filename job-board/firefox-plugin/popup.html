@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Job Fit Scorer</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>Job Fit Scorer</h1>
+    <a href="#" id="open-options" title="Settings">⚙</a>
+  </header>
+
+  <div id="watch-bar" class="watch-bar" hidden>
+    <button id="watch-btn" type="button" class="watch-btn"></button>
+    <span id="watch-status" class="watch-status"></span>
+  </div>
+
+  <main id="status-empty" hidden>
+    <p class="empty">No job posting detected on this page.</p>
+    <p class="empty-hint">Paste a job description below to score it manually:</p>
+    <textarea id="manual-jd" placeholder="Paste job description here..." rows="6"></textarea>
+    <button id="manual-score" class="primary">Score this</button>
+  </main>
+
+  <main id="status-self" hidden>
+    <p class="empty">You're on the Job Inbox — nothing to score here.</p>
+    <p class="empty-hint">Open a job posting in another tab, or use settings to update the resume/key.</p>
+  </main>
+
+  <main id="status-careers-index" hidden>
+    <p class="empty">This looks like a careers index, not a specific job posting.</p>
+    <p class="empty-hint">Click into an individual role on this page to score it. If the company is on a supported ATS, the watch bar above lets you add it for periodic polling.</p>
+  </main>
+
+  <main id="status-actions" hidden>
+    <p class="actions-prompt">Score this page against your resume?</p>
+    <button id="score-action" class="primary">Evaluate this job listing</button>
+    <p class="empty-hint">
+      Sends the page's job description to your job-store, which scores it via
+      Anthropic. Typically ~$0.01 per evaluation. Use the watch bar above
+      instead if this is a careers index, not a single posting.
+    </p>
+  </main>
+
+  <main id="status-loading" hidden>
+    <p>Analyzing against your resume...</p>
+    <div class="spinner"></div>
+  </main>
+
+  <main id="status-error" hidden>
+    <p class="error" id="error-message"></p>
+    <button id="error-retry">Retry</button>
+    <button id="error-options">Open settings</button>
+  </main>
+
+  <main id="status-result" hidden>
+    <div class="score-row">
+      <div class="score-circle" id="score-circle">
+        <span id="score-number">--</span>
+      </div>
+      <div class="recommendation">
+        <div id="recommendation-label" class="rec-label"></div>
+        <div id="ats-platform" class="ats"></div>
+        <div class="subscores">
+          <span id="growth-subscore" class="subscore" hidden></span>
+        </div>
+      </div>
+    </div>
+
+    <p id="summary" class="summary"></p>
+
+    <details id="explanation-section" hidden>
+      <summary>Full explanation</summary>
+      <p id="explanation" class="explanation-text"></p>
+    </details>
+
+    <details open>
+      <summary>Strengths</summary>
+      <ul id="strengths"></ul>
+    </details>
+
+    <details>
+      <summary>Gaps</summary>
+      <ul id="gaps"></ul>
+    </details>
+
+    <div class="meta">
+      <span id="job-title"></span>
+      <span id="jd-score" class="cache-info" hidden></span>
+      <span id="cache-info" class="cache-info"></span>
+    </div>
+
+    <div id="save-status" class="save-status" hidden></div>
+
+    <div id="cache-notice" class="cache-notice" hidden></div>
+
+    <button id="rescore" class="secondary">Re-score</button>
+  </main>
+
+  <script src="lib.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Job Fit Scorer — Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main>
+    <h1>Job Fit Scorer — Settings</h1>
+
+    <p class="help">
+      All scoring happens on the <code>job-store</code> backend. The backend holds
+      the resume, the API key, the model, and the prompt — the plugin just sends
+      job descriptions and renders responses.
+    </p>
+
+    <section>
+      <label for="backend-url">Job-store backend URL</label>
+      <p class="help">
+        URL of the <code>job-store</code> Flask backend
+        (e.g. <code>http://127.0.0.1:5000</code> for local dev,
+        <code>https://jobs.example.com</code> for hosted).
+      </p>
+      <p class="help">
+        Localhost URLs work out of the box. Any other host triggers a one-time
+        Firefox permission prompt the first time you Save or Test —
+        accept it to let the extension reach that host.
+      </p>
+      <div class="row">
+        <input type="text" id="backend-url" placeholder="http://127.0.0.1:5000">
+        <button id="test-backend" type="button">Test</button>
+      </div>
+      <p class="help meta" id="backend-status"></p>
+    </section>
+
+    <section>
+      <button id="save" class="primary" type="button">Save settings</button>
+      <span id="save-status" class="status"></span>
+    </section>
+
+    <section class="footer">
+      <p class="help">
+        Resume edits happen on the backend host
+        (<code>resume_details.yaml</code> in the job-store working directory) —
+        not here. Career-growth keywords are configured via the
+        <code>GROWTH_KEYWORDS</code> env var on the backend.
+      </p>
+    </section>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

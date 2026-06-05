@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Job Fit Scorer",
+  "version": "0.1.0",
+  "description": "Score job postings against your resume using Claude Haiku 4.5.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "job-fit-scorer@devdull.lol",
+      "strict_min_version": "115.0"
+    }
+  },
+  "background": {
+    "scripts": ["lib.js", "background.js"]
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Score this job"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "optional_host_permissions": [
+    "*://*/*"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://*.greenhouse.io/*",
+    "https://*.ashbyhq.com/*",
+    "https://jobs.lever.co/*",
+    "https://*.myworkdayjobs.com/*",
+    "https://*.icims.com/*",
+    "https://www.linkedin.com/jobs/*",
+    "https://*.bamboohr.com/*",
+    "https://apply.workable.com/*",
+    "https://jobs.gem.com/*",
+    "https://*.ats.rippling.com/*",
+    "https://careers.ibm.com/*"
+  ]
+}
