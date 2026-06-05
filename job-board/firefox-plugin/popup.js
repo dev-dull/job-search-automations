@@ -41,11 +41,18 @@ document.getElementById("open-options").addEventListener("click", (e) => {
 function extractInPage() {
   const url = location.href;
   const hostname = location.hostname;
-  // LinkedIn split-pane (`/jobs/collections/.../?currentJobId=N`) renders a
-  // page-level h1 like "Recommended for you" — the actual job title lives in
-  // the detail pane. Try the unified-top-card class first.
+  // Title extraction is ATS-specific-first, then generic fallback. Two known
+  // traps the specific selectors avoid:
+  //   - LinkedIn split-pane (`/jobs/collections/.../?currentJobId=N`) renders a
+  //     page-level h1 like "Recommended for you"; the real title lives in the
+  //     detail pane's unified-top-card.
+  //   - Workday's CXS SPA renders the position in `[data-automation-id=
+  //     'jobPostingHeader']` (an h2, not an h1). With no Workday-specific
+  //     selector this fell through to document.title — the static site banner
+  //     ("CAREERS AT NVIDIA") — so every Workday posting was mis-titled (#42).
   const titleEl =
-    document.querySelector("[class*='jobs-unified-top-card__job-title']") ||
+    document.querySelector("[class*='jobs-unified-top-card__job-title']") ||  // LinkedIn
+    document.querySelector("[data-automation-id='jobPostingHeader']") ||      // Workday
     document.querySelector("h1");
   const title = (titleEl?.innerText || document.title || "").trim();
 
