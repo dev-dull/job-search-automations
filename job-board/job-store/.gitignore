@@ -1,0 +1,7 @@
+jobs.db
+jobs.db-shm
+jobs.db-wal
+__pycache__/
+*.pyc
+.venv/
+venv/

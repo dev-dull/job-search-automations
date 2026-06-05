@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Targeted Companies — Job Inbox</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    /* Page-specific styles. Keep main style.css untouched. */
+    .top-nav { display: flex; gap: 1rem; margin-bottom: 0.5rem; }
+    .top-nav a { font-weight: 600; }
+    .top-nav a.active { text-decoration: underline; }
+
+    .add-company {
+      background: #f6f6f8;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1.5rem;
+    }
+    .add-company form {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 0.75rem;
+      align-items: end;
+    }
+    .add-company label { display: flex; flex-direction: column; font-size: 0.9rem; }
+    .add-company input[type="url"],
+    .add-company input[type="text"] {
+      padding: 0.4rem 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 0.95rem;
+    }
+    .hint { font-size: 0.85rem; color: #666; margin: 0.5rem 0 0; }
+    .add-error {
+      background: #fdecea;
+      border: 1px solid #f3b6b3;
+      color: #722;
+      padding: 0.6rem 0.8rem;
+      border-radius: 4px;
+      margin: 0 0 0.75rem;
+      font-size: 0.92rem;
+    }
+    .ats.ats-other { background: #fff3cd; color: #856404; }
+    .unpollable {
+      background: #fff3cd;
+      color: #856404;
+      padding: 0.1rem 0.4rem;
+      border-radius: 3px;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .company-target {
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 0.75rem;
+    }
+    .company-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .company-header h3 { margin: 0; }
+    .company-header .meta {
+      display: flex;
+      gap: 0.75rem;
+      font-size: 0.85rem;
+      color: #555;
+    }
+    .meta .ats {
+      background: #eef;
+      padding: 0.1rem 0.4rem;
+      border-radius: 3px;
+      font-family: monospace;
+    }
+    .meta .dim { color: #999; }
+
+    .edit-target { margin-top: 0.5rem; }
+    .edit-target summary {
+      cursor: pointer;
+      color: #555;
+      font-size: 0.9rem;
+    }
+    .edit-target form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      margin-top: 0.6rem;
+    }
+    .edit-target label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      font-size: 0.9rem;
+    }
+    .edit-target textarea {
+      font-family: monospace;
+      font-size: 0.9rem;
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      resize: vertical;
+    }
+    .form-actions { display: flex; gap: 0.5rem; }
+    .delete-form { margin-top: 0.5rem; }
+    button.danger {
+      background: #fff;
+      color: #b00;
+      border: 1px solid #b00;
+      padding: 0.3rem 0.7rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    button.danger:hover { background: #fee; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Targeted Companies</h1>
+    <div class="top-nav">
+      <a href="/">Inbox</a>
+      <a href="/companies" class="active">Companies ({{ targets|length }})</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="add-company">
+      <h2>Add company</h2>
+      {% if add_error %}
+        <div class="add-error">{{ add_error }}</div>
+      {% endif %}
+      <form method="post" action="/companies">
+        <label>
+          Careers URL
+          <input type="url" name="careers_url" required
+                 value="{{ add_url or '' }}"
+                 placeholder="https://job-boards.greenhouse.io/chainguard">
+        </label>
+        <label>
+          Name (optional)
+          <input type="text" name="name" value="{{ add_name or '' }}"
+                 placeholder="auto-detected if blank">
+        </label>
+        <button type="submit" class="primary">Add</button>
+      </form>
+      <p class="hint">
+        Supported ATSes: Greenhouse, Ashby, Lever, Workday. If you paste a wrapper
+        page (e.g., <code>company.com/careers/</code>), we'll fetch it and try to
+        resolve the underlying board automatically.
+      </p>
+    </section>
+
+    {% if not targets %}
+      <p class="empty">No companies targeted yet. Paste a careers URL above to add one.</p>
+    {% endif %}
+
+    {% for t in targets %}
+      <article class="company-target">
+        <div class="company-header">
+          <h3>{{ t.name }}</h3>
+          <div class="meta">
+            <span class="ats ats-{{ t.ats_platform or 'other' }}">{{ t.ats_platform or 'other' }}</span>
+            {% if t.ats_platform == 'other' %}
+              <span class="unpollable" title="No adapter — poller skips this target">⚠ unpollable</span>
+            {% endif %}
+            {% if t.last_polled_at %}
+              <span class="age">{{ t.last_polled_label }} · {{ t.last_polled_count }} jobs</span>
+            {% else %}
+              <span class="age dim">never polled</span>
+            {% endif %}
+            <a href="{{ t.careers_url }}" target="_blank" rel="noopener">careers&nbsp;↗</a>
+          </div>
+        </div>
+
+        <details class="edit-target">
+          <summary>Edit ({{ t.deny_list|length }} deny terms)</summary>
+          <form method="post" action="/companies/{{ t.id }}">
+            <label>
+              Name
+              <input type="text" name="name" value="{{ t.name }}">
+            </label>
+            <label>
+              Deny list — one term per line. Case-insensitive substring match against role titles.
+              <textarea name="deny_list" rows="8"
+                placeholder="Sales&#10;Marketing&#10;Customer Success&#10;Intern">{{ t.deny_list|join('\n') }}</textarea>
+            </label>
+            <div class="form-actions">
+              <button type="submit" class="primary">Save</button>
+            </div>
+          </form>
+          <form method="post" action="/companies/{{ t.id }}/delete" class="delete-form"
+                onsubmit="return confirm('Remove {{ t.name }} from targets? Jobs already scored from this company are not affected.');">
+            <button type="submit" class="danger">Delete this company</button>
+          </form>
+        </details>
+      </article>
+    {% endfor %}
+  </main>
+</body>
+</html>

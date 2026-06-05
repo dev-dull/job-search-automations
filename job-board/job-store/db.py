@@ -1,0 +1,515 @@
+"""SQLite schema and query helpers for the job store."""
+
+import json
+import sqlite3
+from contextlib import contextmanager
+from datetime import datetime
+from pathlib import Path
+
+
+DB_PATH = Path(__file__).parent / "jobs.db"
+
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY,
+    url TEXT NOT NULL UNIQUE,
+    company TEXT,
+    title TEXT,
+    description TEXT,
+    ats_platform TEXT,
+    posted_at DATE,
+    discovered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    discovered_by TEXT,
+    status TEXT NOT NULL DEFAULT 'discovered',
+    fit_score REAL,
+    analysis_json TEXT,
+    rank_score REAL,
+    applied_at TIMESTAMP,
+    branch TEXT,
+    dedupe_key TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+CREATE INDEX IF NOT EXISTS idx_jobs_rank ON jobs(rank_score DESC);
+CREATE INDEX IF NOT EXISTS idx_jobs_ats ON jobs(ats_platform);
+-- idx_jobs_dedupe_key is created after the migration step in init_db so it
+-- exists for both fresh DBs (column came in via CREATE TABLE) and migrated
+-- DBs (column added by ALTER TABLE).
+
+CREATE TABLE IF NOT EXISTS outcomes (
+    job_id INTEGER PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+    referral INTEGER NOT NULL DEFAULT 0,
+    callback INTEGER NOT NULL DEFAULT 0,
+    callback_at DATE,
+    ghosted INTEGER NOT NULL DEFAULT 0,
+    rejected INTEGER NOT NULL DEFAULT 0,
+    offer INTEGER NOT NULL DEFAULT 0,
+    notes TEXT,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS company_targets (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    careers_url TEXT NOT NULL UNIQUE,
+    ats_platform TEXT,
+    ats_identifier TEXT,
+    deny_list TEXT NOT NULL DEFAULT '[]',
+    last_polled_at TIMESTAMP,
+    last_polled_count INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+
+def get_conn():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def init_db():
+    conn = get_conn()
+    conn.executescript(SCHEMA)
+    # Migration: older DBs were created before `dedupe_key` existed. Add the
+    # column + index if missing, then backfill from existing URLs.
+    existing_cols = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+    if "dedupe_key" not in existing_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN dedupe_key TEXT")
+    # Either path (fresh DB or migrated DB) reaches here with the column
+    # in place; create the index unconditionally.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_dedupe_key ON jobs(dedupe_key)")
+    # outcomes.rejected was added after the original schema. Older DBs need
+    # the column added explicitly.
+    existing_outcome_cols = {r["name"] for r in conn.execute("PRAGMA table_info(outcomes)").fetchall()}
+    if "rejected" not in existing_outcome_cols:
+        conn.execute("ALTER TABLE outcomes ADD COLUMN rejected INTEGER NOT NULL DEFAULT 0")
+    # Backfill any rows missing a dedupe key. Cheap — runs once per row.
+    from urls import compute_dedupe_key
+    pending = conn.execute("SELECT id, url FROM jobs WHERE dedupe_key IS NULL").fetchall()
+    for r in pending:
+        conn.execute("UPDATE jobs SET dedupe_key = ? WHERE id = ?",
+                     (compute_dedupe_key(r["url"]), r["id"]))
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.commit()
+    conn.close()
+
+
+@contextmanager
+def cursor():
+    conn = get_conn()
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Jobs
+# ---------------------------------------------------------------------------
+
+def upsert_job(*, url, company, title, description, ats_platform, posted_at,
+               discovered_by, fit_score, analysis_json):
+    """
+    Insert if the posting (by dedupe_key) is new; otherwise update fit/analysis
+    fields without clobbering applied/branch/status. Returns the row id.
+
+    Lookups go through `dedupe_key` rather than `url` so that two URLs pointing
+    at the same Greenhouse posting (embed wrapper vs. boards-api host) merge
+    into a single row.
+    """
+    from urls import compute_dedupe_key
+    dk = compute_dedupe_key(url)
+    with cursor() as conn:
+        existing = conn.execute(
+            "SELECT id FROM jobs WHERE dedupe_key = ? OR url = ?", (dk, url)
+        ).fetchone()
+        if existing:
+            conn.execute(
+                """
+                UPDATE jobs SET
+                    company = COALESCE(?, company),
+                    title = COALESCE(?, title),
+                    description = COALESCE(?, description),
+                    ats_platform = COALESCE(?, ats_platform),
+                    posted_at = COALESCE(?, posted_at),
+                    discovered_by = COALESCE(?, discovered_by),
+                    fit_score = COALESCE(?, fit_score),
+                    analysis_json = COALESCE(?, analysis_json),
+                    dedupe_key = COALESCE(dedupe_key, ?)
+                WHERE id = ?
+                """,
+                (company, title, description, ats_platform, posted_at,
+                 discovered_by, fit_score, analysis_json, dk, existing["id"]),
+            )
+            return existing["id"]
+        cur = conn.execute(
+            """
+            INSERT INTO jobs (url, company, title, description, ats_platform,
+                              posted_at, discovered_by, fit_score, analysis_json,
+                              status, dedupe_key)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'discovered', ?)
+            """,
+            (url, company, title, description, ats_platform, posted_at,
+             discovered_by, fit_score, analysis_json, dk),
+        )
+        return cur.lastrowid
+
+
+def get_job(job_id):
+    with cursor() as conn:
+        return conn.execute(
+            """
+            SELECT j.*, o.referral, o.callback, o.callback_at, o.ghosted, o.rejected, o.offer, o.notes
+            FROM jobs j
+            LEFT JOIN outcomes o ON o.job_id = j.id
+            WHERE j.id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+
+
+def get_job_by_url(url):
+    """Lookup by dedupe key derived from `url`. Same posting served from
+    different hosts (embed wrapper vs. Greenhouse-direct) lands on the same
+    row. Falls back to URL match for rows that haven't been backfilled yet."""
+    from urls import compute_dedupe_key
+    dk = compute_dedupe_key(url)
+    with cursor() as conn:
+        row = conn.execute(
+            "SELECT * FROM jobs WHERE dedupe_key = ? OR url = ?", (dk, url)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def list_jobs(*, statuses=None, order="rank_score DESC NULLS LAST"):
+    sql = """
+        SELECT j.*, o.referral, o.callback, o.callback_at, o.ghosted, o.rejected, o.offer, o.notes
+        FROM jobs j
+        LEFT JOIN outcomes o ON o.job_id = j.id
+    """
+    params = []
+    if statuses:
+        placeholders = ",".join(["?"] * len(statuses))
+        sql += f" WHERE j.status IN ({placeholders})"
+        params.extend(statuses)
+    sql += f" ORDER BY {order}"
+    with cursor() as conn:
+        return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+
+def update_status(job_id, status):
+    with cursor() as conn:
+        conn.execute("UPDATE jobs SET status = ? WHERE id = ?", (status, job_id))
+
+
+def update_rank_score(job_id, rank_score, status=None):
+    with cursor() as conn:
+        if status is not None:
+            conn.execute(
+                "UPDATE jobs SET rank_score = ?, status = ? WHERE id = ?",
+                (rank_score, status, job_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE jobs SET rank_score = ? WHERE id = ?",
+                (rank_score, job_id),
+            )
+
+
+def mark_applied(job_id, branch):
+    with cursor() as conn:
+        conn.execute(
+            """
+            UPDATE jobs SET status = 'applied',
+                            applied_at = CURRENT_TIMESTAMP,
+                            branch = ?
+            WHERE id = ?
+            """,
+            (branch, job_id),
+        )
+
+
+def status_counts():
+    with cursor() as conn:
+        rows = conn.execute(
+            "SELECT status, COUNT(*) AS n FROM jobs GROUP BY status"
+        ).fetchall()
+    counts = {r["status"]: r["n"] for r in rows}
+    counts["open"] = counts.get("discovered", 0) + counts.get("ranked", 0)
+    counts["total"] = sum(r["n"] for r in rows)
+    return counts
+
+
+# ---------------------------------------------------------------------------
+# Outcomes
+# ---------------------------------------------------------------------------
+
+def upsert_outcome(job_id, *, referral=False, callback=False, callback_at=None,
+                   ghosted=False, rejected=False, offer=False, notes=""):
+    with cursor() as conn:
+        conn.execute(
+            """
+            INSERT INTO outcomes (job_id, referral, callback, callback_at,
+                                  ghosted, rejected, offer, notes, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(job_id) DO UPDATE SET
+                referral = excluded.referral,
+                callback = excluded.callback,
+                callback_at = excluded.callback_at,
+                ghosted = excluded.ghosted,
+                rejected = excluded.rejected,
+                offer = excluded.offer,
+                notes = excluded.notes,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (job_id, int(referral), int(callback), callback_at,
+             int(ghosted), int(rejected), int(offer), notes),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Stats / ranking inputs
+# ---------------------------------------------------------------------------
+
+def get_platform_stats(ats_platform):
+    """
+    Return (platform_callbacks, platform_applied, global_callback_rate).
+    Used by the ranker to compute platform_factor.
+    """
+    with cursor() as conn:
+        global_row = conn.execute(
+            """
+            SELECT
+                SUM(CASE WHEN o.callback = 1 THEN 1 ELSE 0 END) AS cb,
+                COUNT(*) AS applied
+            FROM jobs j JOIN outcomes o ON o.job_id = j.id
+            WHERE j.status = 'applied' OR j.applied_at IS NOT NULL
+            """
+        ).fetchone()
+        plat_row = conn.execute(
+            """
+            SELECT
+                SUM(CASE WHEN o.callback = 1 THEN 1 ELSE 0 END) AS cb,
+                COUNT(*) AS applied
+            FROM jobs j JOIN outcomes o ON o.job_id = j.id
+            WHERE (j.status = 'applied' OR j.applied_at IS NOT NULL)
+              AND j.ats_platform = ?
+            """,
+            (ats_platform,),
+        ).fetchone()
+
+    g_applied = global_row["applied"] or 0
+    g_callbacks = global_row["cb"] or 0
+    p_applied = plat_row["applied"] or 0
+    p_callbacks = plat_row["cb"] or 0
+    global_rate = (g_callbacks / g_applied) if g_applied else 0.0
+    return p_callbacks, p_applied, global_rate
+
+
+def platform_stats_summary():
+    """Counts for the top-of-page banner."""
+    with cursor() as conn:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS total_applied,
+                SUM(CASE WHEN o.callback = 1 THEN 1 ELSE 0 END) AS total_callbacks,
+                SUM(CASE WHEN o.offer = 1 THEN 1 ELSE 0 END) AS total_offers
+            FROM jobs j JOIN outcomes o ON o.job_id = j.id
+            WHERE j.status = 'applied' OR j.applied_at IS NOT NULL
+            """
+        ).fetchone()
+
+    total_applied = row["total_applied"] or 0
+    total_callbacks = row["total_callbacks"] or 0
+    total_offers = row["total_offers"] or 0
+    rate_pct = round(100 * total_callbacks / total_applied, 1) if total_applied else 0.0
+    return {
+        "total_applied": total_applied,
+        "total_callbacks": total_callbacks,
+        "total_offers": total_offers,
+        "callback_rate_pct": rate_pct,
+    }
+
+
+def all_jobs_for_rerank():
+    with cursor() as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT id, fit_score, posted_at, discovered_at, ats_platform "
+            "FROM jobs WHERE fit_score IS NOT NULL"
+        ).fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# Company targets (per-company polling config for the discovery bot)
+# ---------------------------------------------------------------------------
+
+def list_company_targets():
+    with cursor() as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM company_targets ORDER BY name COLLATE NOCASE ASC"
+        ).fetchall()]
+
+
+def get_company_target(target_id):
+    with cursor() as conn:
+        row = conn.execute(
+            "SELECT * FROM company_targets WHERE id = ?", (target_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def create_company_target(*, name, careers_url, ats_platform, ats_identifier,
+                          deny_list=None):
+    with cursor() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO company_targets
+                (name, careers_url, ats_platform, ats_identifier, deny_list)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                name,
+                careers_url,
+                ats_platform,
+                json.dumps(ats_identifier) if ats_identifier else None,
+                json.dumps(deny_list or []),
+            ),
+        )
+        return cur.lastrowid
+
+
+def update_company_target(target_id, *, name=None, deny_list=None,
+                          ats_platform=None, ats_identifier=None,
+                          last_polled_at=None, last_polled_count=None):
+    fields = []
+    values = []
+    if name is not None:
+        fields.append("name = ?")
+        values.append(name)
+    if deny_list is not None:
+        fields.append("deny_list = ?")
+        values.append(json.dumps(deny_list))
+    if ats_platform is not None:
+        fields.append("ats_platform = ?")
+        values.append(ats_platform)
+    if ats_identifier is not None:
+        fields.append("ats_identifier = ?")
+        values.append(json.dumps(ats_identifier))
+    if last_polled_at is not None:
+        fields.append("last_polled_at = ?")
+        values.append(last_polled_at)
+    if last_polled_count is not None:
+        fields.append("last_polled_count = ?")
+        values.append(last_polled_count)
+    if not fields:
+        return
+    fields.append("updated_at = CURRENT_TIMESTAMP")
+    values.append(target_id)
+    with cursor() as conn:
+        conn.execute(
+            f"UPDATE company_targets SET {', '.join(fields)} WHERE id = ?",
+            values,
+        )
+
+
+def delete_company_target(target_id):
+    with cursor() as conn:
+        conn.execute("DELETE FROM company_targets WHERE id = ?", (target_id,))
+
+
+def parse_company_target(row):
+    """Decode the JSON columns into Python values for templates / API responses."""
+    row = dict(row)
+    try:
+        row["deny_list"] = json.loads(row.get("deny_list") or "[]")
+    except (TypeError, ValueError):
+        row["deny_list"] = []
+    if row.get("ats_identifier"):
+        try:
+            row["ats_identifier_parsed"] = json.loads(row["ats_identifier"])
+        except (TypeError, ValueError):
+            row["ats_identifier_parsed"] = None
+    else:
+        row["ats_identifier_parsed"] = None
+    return row
+
+
+# ---------------------------------------------------------------------------
+# JSON helpers
+# ---------------------------------------------------------------------------
+
+def parse_analysis(analysis_json):
+    if not analysis_json:
+        return {}
+    try:
+        return json.loads(analysis_json)
+    except (TypeError, ValueError):
+        return {}
+
+
+# ---------------------------------------------------------------------------
+# Settings — key/value store for things like the stale-cleanup threshold.
+# ---------------------------------------------------------------------------
+
+def get_setting(key, default=None):
+    with cursor() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_setting(key, value):
+    with cursor() as conn:
+        conn.execute(
+            """
+            INSERT INTO settings (key, value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (key, str(value)),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Cleanup helpers
+# ---------------------------------------------------------------------------
+
+def list_cleanup_candidates():
+    """Rows eligible for stale-cleanup: not applied, not closed, no recorded
+    outcome data. Returns id, url, discovered_at."""
+    with cursor() as conn:
+        return [dict(r) for r in conn.execute(
+            """
+            SELECT j.id, j.url, j.discovered_at
+            FROM jobs j
+            LEFT JOIN outcomes o ON o.job_id = j.id
+            WHERE j.status IN ('discovered', 'ranked')
+              AND (o.job_id IS NULL OR
+                   (o.callback = 0 AND o.offer = 0 AND o.referral = 0
+                    AND o.rejected = 0 AND o.ghosted = 0
+                    AND COALESCE(o.notes, '') = ''))
+            """
+        ).fetchall()]
+
+
+def delete_jobs(job_ids):
+    """Bulk delete by id. Outcomes rows cascade via ON DELETE CASCADE."""
+    if not job_ids:
+        return 0
+    placeholders = ",".join(["?"] * len(job_ids))
+    with cursor() as conn:
+        cur = conn.execute(f"DELETE FROM jobs WHERE id IN ({placeholders})", list(job_ids))
+        return cur.rowcount
