@@ -105,6 +105,9 @@ def list_jobs(identifier: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     offset = 0
     pages = 0
+    total = None  # latched from page 1; the CXS API only returns `total` on
+    # the first page (subsequent pages report total=0), so we must not
+    # overwrite it or the loop terminates after offset=20.
     while pages < MAX_PAGES:
         page = _http_json(list_url, method="POST", body={
             "appliedFacets": {},
@@ -138,10 +141,11 @@ def list_jobs(identifier: dict[str, Any]) -> list[dict[str, Any]]:
                 "_site": site,
                 "_external_path": external_path,
             })
-        total = page.get("total") or 0
+        if total is None:
+            total = page.get("total") or 0
         offset += PAGE_SIZE
         pages += 1
-        if offset >= total:
+        if total and offset >= total:
             break
     return out
 
