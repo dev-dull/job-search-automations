@@ -30,3 +30,12 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/name: {{ include "job-store.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
+
+{{/* Secret name: the externally-managed Secret if given, else the chart's own. */}}
+{{- define "job-store.secretName" -}}
+{{- if .Values.secret.existingSecret -}}
+{{- .Values.secret.existingSecret -}}
+{{- else -}}
+{{- printf "%s-secret" (include "job-store.fullname" .) -}}
+{{- end -}}
+{{- end -}}

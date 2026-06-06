@@ -44,6 +44,19 @@ extraEnv: []
 # Persistent storage for jobs.db (and its WAL/SHM siblings, which MUST sit on
 # the same volume). When disabled, /data is an emptyDir — fine for dev/test
 # clusters where the inbox is disposable.
+# Anthropic API key + resume content. The resume is a Secret (not a ConfigMap)
+# because it holds personal information.
+secret:
+  # true: the chart creates the Secret from the values below (quick start).
+  # false: set existingSecret to a Secret you manage out-of-band
+  # (sealed-secrets / external-secrets / SOPS / Vault) that carries the same two
+  # keys — `anthropic-api-key` and `resume.yaml`.
+  create: true
+  existingSecret: ""
+  # REQUIRED when create=true (helm template/install fails clearly if unset).
+  anthropicApiKey: ""
+  resumeYaml: ""
+
 persistence:
   enabled: true
   # "" uses the cluster's default StorageClass; "-" disables dynamic

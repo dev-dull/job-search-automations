@@ -7,6 +7,14 @@ a Kubernetes cluster (targets k3s 1.28+).
 helm install job-store ./helm -n job-board --create-namespace -f values.yaml
 ```
 
+Scoring credentials are required — see [Secrets](#secrets). Quick start:
+
+```bash
+helm install job-store ./helm -n job-board --create-namespace \
+  --set secret.anthropicApiKey=sk-ant-... \
+  --set-file secret.resumeYaml=./resume_details.yaml
+```
+
 Render without installing:
 
 ```bash
@@ -23,7 +31,7 @@ separate charts/issues, added incrementally:
 |---|---|---|
 | Deployment + Service | #35 | this chart |
 | Persistence (PVC for `jobs.db`) | #36 | done — `jobs.db` is on a PVC (`persistence.enabled`); set `false` for a disposable `emptyDir` |
-| Secret (`ANTHROPIC_API_KEY`, resume) | #37 | pending — scoring fails until wired; the inbox + probes work without it |
+| Secret (`ANTHROPIC_API_KEY`, resume) | #37 | done — see [Secrets](#secrets) |
 | Ingress + TLS | #38 | pending — reach the Service via `kubectl port-forward` for now |
 | Poller CronJob | #39 | pending |
 
@@ -43,6 +51,42 @@ separate charts/issues, added incrementally:
 | `persistence.storageClass` | `""` | `""` = cluster default; `"-"` = no dynamic provisioning; else the class name |
 | `persistence.size` | `5Gi` | generous for a single-user inbox |
 | `persistence.accessModes` | `["ReadWriteOnce"]` | RWO is correct for a single-writer deployment |
+| `secret.create` | `true` | chart creates the Secret from the values below |
+| `secret.existingSecret` | `""` | when set, use this externally-managed Secret instead |
+| `secret.anthropicApiKey` | `""` | **required** when `create: true` |
+| `secret.resumeYaml` | `""` | **required** when `create: true` |
+
+## Secrets
+
+`ANTHROPIC_API_KEY` and the resume drive server-side scoring. The resume is a
+Secret (not a ConfigMap) because it holds personal information. The Deployment
+reads the key from `secretKeyRef` and mounts the resume read-only at
+`/etc/job-store/resume.yaml` (`RESUME_PATH`). Either Secret form must carry the
+same two keys: `anthropic-api-key` and `resume.yaml`.
+
+**Chart-managed (quick start).** The chart creates the Secret:
+
+```bash
+helm install job-store ./helm -n job-board --create-namespace \
+  --set secret.anthropicApiKey=sk-ant-... \
+  --set-file secret.resumeYaml=./resume_details.yaml
+```
+
+With `secret.create: true`, `helm template`/`install` fails fast if either value
+is unset.
+
+**External Secret (production).** Manage the Secret out-of-band
+(sealed-secrets / external-secrets / SOPS / Vault) and point the chart at it:
+
+```bash
+kubectl -n job-board create secret generic job-store-creds \
+  --from-literal=anthropic-api-key=sk-ant-... \
+  --from-file=resume.yaml=./resume_details.yaml   # or via your secrets operator
+
+helm install job-store ./helm -n job-board \
+  --set secret.create=false \
+  --set secret.existingSecret=job-store-creds
+```
 
 ## Hard constraints
 

@@ -52,6 +52,15 @@ spec:
             # heartbeat files don't hit the read-only root filesystem.
             - name: HOME
               value: /tmp
+            # Server-side scoring credentials. The key comes from the Secret;
+            # the resume is file-mounted (see the resume volume below).
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "job-store.secretName" . }}
+                  key: anthropic-api-key
+            - name: RESUME_PATH
+              value: /etc/job-store/resume.yaml
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -74,6 +83,9 @@ spec:
               mountPath: /data
             - name: tmp
               mountPath: /tmp
+            - name: resume
+              mountPath: /etc/job-store
+              readOnly: true
       volumes:
         # jobs.db (+ WAL/SHM). Backed by a PVC so state survives pod restarts;
         # emptyDir (disposable) when persistence is disabled. fsGroup (above)
@@ -89,3 +101,11 @@ spec:
         # gunicorn worker heartbeat + control socket (via HOME=/tmp) and tmpfiles.
         - name: tmp
           emptyDir: {}
+        # Resume YAML projected from the Secret as a single read-only file at
+        # /etc/job-store/resume.yaml (the anthropic key is env-only, not a file).
+        - name: resume
+          secret:
+            secretName: {{ include "job-store.secretName" . }}
+            items:
+              - key: resume.yaml
+                path: resume.yaml
