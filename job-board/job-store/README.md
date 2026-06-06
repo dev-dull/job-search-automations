@@ -125,3 +125,25 @@ Constants live at the top of `ranking.py`. Plan to revisit once you have at leas
 Single-writer SQLite, `PRAGMA journal_mode = WAL` for read concurrency. Suitable for one-user homelab use. For cluster deployment, see the (planned) Dockerfile and Helm chart issues on the repo.
 
 `flask run` is fine for dev. For something sustained, swap in `gunicorn -w 1 -b 127.0.0.1:5000 app:app` (single worker since SQLite tolerates one writer).
+
+## Running with Docker
+
+The `Dockerfile` produces a gunicorn-served image. The resume and API key are injected at runtime — never baked into the image — and the DB lives at `JOBS_DB_PATH` so it can sit on a mounted volume.
+
+```bash
+docker build -t job-store .
+docker run --rm -p 5000:5000 \
+  -e ANTHROPIC_API_KEY=sk-ant-... \
+  -e RESUME_PATH=/etc/job-store/resume.yaml \
+  -v "$PWD/resume.yaml:/etc/job-store/resume.yaml:ro" \
+  -v job-store-data:/data \
+  job-store
+```
+
+| Env var | In the image | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | injected at run | server-side scoring |
+| `RESUME_PATH` | injected at run | mount the resume read-only and point here |
+| `JOBS_DB_PATH` | defaults to `/data/jobs.db` | DB location; keep it on the mounted volume so state survives restarts (WAL/SHM siblings land in the same dir). Unset, it defaults next to the code for local `flask run`. |
+
+CI builds and pushes `ghcr.io/dev-dull/job-store:{git-sha}` (and `:latest` on `main`) via `.github/workflows/build-job-store.yaml`.

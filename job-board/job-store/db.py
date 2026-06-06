@@ -1,13 +1,18 @@
 """SQLite schema and query helpers for the job store."""
 
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
 
-DB_PATH = Path(__file__).parent / "jobs.db"
+# Default keeps the DB next to the code so local dev (`flask run`) is unchanged.
+# Set JOBS_DB_PATH to relocate it — e.g. the container points it at a writable
+# mounted volume (/data/jobs.db) so state survives pod restarts and the rest of
+# the root filesystem can stay read-only. WAL/SHM siblings land in the same dir.
+DB_PATH = Path(os.environ.get("JOBS_DB_PATH") or (Path(__file__).parent / "jobs.db"))
 
 
 SCHEMA = """

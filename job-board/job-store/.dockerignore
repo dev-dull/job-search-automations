@@ -1,0 +1,19 @@
+# SQLite DB + WAL/SHM — never bake local state into the image
+jobs.db
+jobs.db-shm
+jobs.db-wal
+jobs.db*
+
+# Python caches / local venvs
+__pycache__/
+**/__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Captured HTTP traffic, tests, and build/meta files not needed at runtime
+*.har
+tests/
+.gitignore
+.dockerignore
+Dockerfile
