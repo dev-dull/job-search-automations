@@ -25,6 +25,27 @@ service:
   type: ClusterIP
   port: 5000
 
+# External exposure. Disabled by default — clusters without an ingress
+# controller reach the inbox via `kubectl port-forward` or a LoadBalancer
+# Service. The inbox has NO authentication, so only expose it on a trusted
+# network (tailnet / WireGuard / VPN), never the public internet. See README.
+ingress:
+  enabled: false
+  className: ""
+  # Controller / cert-manager hints, e.g.:
+  #   cert-manager.io/cluster-issuer: letsencrypt-prod
+  #   nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  annotations: {}
+  hosts:
+    - host: job-store.local
+      paths:
+        - path: /
+          pathType: Prefix
+  # cert-manager populates the named Secret from the issuer, e.g.:
+  #   - secretName: job-store-tls
+  #     hosts: [job-store.example.com]
+  tls: []
+
 # Probes hit `/`, which returns 200 once db.py has initialized the schema.
 probes:
   liveness:

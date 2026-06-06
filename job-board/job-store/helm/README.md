@@ -32,7 +32,7 @@ separate charts/issues, added incrementally:
 | Deployment + Service | #35 | this chart |
 | Persistence (PVC for `jobs.db`) | #36 | done — `jobs.db` is on a PVC (`persistence.enabled`); set `false` for a disposable `emptyDir` |
 | Secret (`ANTHROPIC_API_KEY`, resume) | #37 | done — see [Secrets](#secrets) |
-| Ingress + TLS | #38 | pending — reach the Service via `kubectl port-forward` for now |
+| Ingress + TLS | #38 | done — see [Ingress + TLS](#ingress--tls) (disabled by default) |
 | Poller CronJob | #39 | pending |
 
 ## Key values
@@ -55,6 +55,11 @@ separate charts/issues, added incrementally:
 | `secret.existingSecret` | `""` | when set, use this externally-managed Secret instead |
 | `secret.anthropicApiKey` | `""` | **required** when `create: true` |
 | `secret.resumeYaml` | `""` | **required** when `create: true` |
+| `ingress.enabled` | `false` | create an Ingress; off → `port-forward`/LoadBalancer |
+| `ingress.className` | `""` | ingress class (e.g. `nginx`); `""` = cluster default |
+| `ingress.annotations` | `{}` | cert-manager / controller hints |
+| `ingress.hosts` | `[{host: job-store.local, paths: [{path: /, pathType: Prefix}]}]` | |
+| `ingress.tls` | `[]` | list of `{secretName, hosts}` |
 
 ## Secrets
 
@@ -87,6 +92,44 @@ helm install job-store ./helm -n job-board \
   --set secret.create=false \
   --set secret.existingSecret=job-store-creds
 ```
+
+## Ingress + TLS
+
+Disabled by default. The Ingress is controller-agnostic — `className` and
+`annotations` are pass-through, so it works with nginx-ingress, Traefik (k3s
+default), etc.
+
+> ⚠️ **The inbox has no authentication.** It surfaces personal data (applied
+> history, branch names). Only expose it on a trusted network — a tailnet,
+> WireGuard, or VPN — **never the public internet** until an auth layer lands.
+
+**Recommended: cert-manager + nginx-ingress + Let's Encrypt.** With
+[cert-manager](https://cert-manager.io/) installed and a `letsencrypt-prod`
+`ClusterIssuer`, cert-manager provisions and renews the cert into the TLS Secret
+named below:
+
+```yaml
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"   # force HTTP -> HTTPS
+  hosts:
+    - host: job-store.internal.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: job-store-tls
+      hosts:
+        - job-store.internal.example.com
+```
+
+The HTTP→HTTPS redirect is controller-specific: `ssl-redirect` above for
+nginx-ingress; on Traefik, redirect at the entrypoint (`web` → `websecure`) or
+via a redirect middleware annotation. DNS for the host is yours to manage (or
+let external-dns pick it up).
 
 ## Hard constraints
 
