@@ -1,0 +1,10 @@
+apiVersion: v2
+name: job-store
+description: Flask + SQLite inbox and server-side scoring backend for the Job Board stack.
+type: application
+# Chart version (semver) — bump on chart changes.
+version: 0.1.0
+# Tracks the app; image.tag in values.yaml overrides what actually deploys.
+appVersion: "0.1.0"
+# k3s 1.28+ (the homelab target). The `-0` suffix lets pre-release builds match.
+kubeVersion: ">=1.28.0-0"

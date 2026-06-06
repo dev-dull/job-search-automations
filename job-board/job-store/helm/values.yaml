@@ -1,0 +1,48 @@
+# Default values for job-store.
+
+image:
+  repository: ghcr.io/dev-dull/job-store
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Pull secrets for a private GHCR package. Leave empty if the package is public.
+# e.g. imagePullSecrets: [{name: ghcr-creds}]
+imagePullSecrets: []
+
+# Single writer: SQLite tolerates exactly one writer, so the Deployment uses a
+# Recreate strategy and this MUST stay 1 until the data layer moves off SQLite.
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+service:
+  type: ClusterIP
+  port: 5000
+
+# Probes hit `/`, which returns 200 once db.py has initialized the schema.
+probes:
+  liveness:
+    initialDelaySeconds: 5
+    periodSeconds: 15
+  readiness:
+    initialDelaySeconds: 3
+    periodSeconds: 10
+
+# Extra environment variables appended to the container, as a list of
+# {name, value} (or {name, valueFrom}) entries. Server-side scoring needs
+# ANTHROPIC_API_KEY and RESUME_PATH — those are wired via the Secret (issue #37);
+# until that lands, the inbox runs and probes pass without them (scoring fails
+# until configured). Use extraEnv for any other app-level config.
+extraEnv: []
+
+# Persistence is owned by the PVC issue (#36). For this skeleton, jobs.db lives
+# on an emptyDir and is lost on pod restart. #36 swaps /data for a PVC.
+
+nameOverride: ""
+fullnameOverride: ""

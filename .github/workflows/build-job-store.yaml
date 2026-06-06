@@ -7,6 +7,11 @@ on:
     branches: [main]
     paths:
       - 'job-board/job-store/**'
+      # Exclude paths that don't affect the image (Helm chart, tests, docs are
+      # .dockerignore'd or out-of-image), so chart/doc edits don't rebuild it.
+      - '!job-board/job-store/helm/**'
+      - '!job-board/job-store/tests/**'
+      - '!job-board/job-store/**.md'
       - '.github/workflows/build-job-store.yaml'
   workflow_dispatch:
 
