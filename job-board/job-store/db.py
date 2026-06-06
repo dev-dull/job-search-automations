@@ -356,6 +356,13 @@ def all_jobs_for_rerank():
         ).fetchall()]
 
 
+def all_job_urls():
+    """Every stored job URL. Backs GET /jobs/urls, which the poller uses for
+    dedupe / stop-when-seen without direct DB access."""
+    with cursor() as conn:
+        return [r["url"] for r in conn.execute("SELECT url FROM jobs").fetchall()]
+
+
 # ---------------------------------------------------------------------------
 # Company targets (per-company polling config for the discovery bot)
 # ---------------------------------------------------------------------------

@@ -33,7 +33,7 @@ separate charts/issues, added incrementally:
 | Persistence (PVC for `jobs.db`) | #36 | done — `jobs.db` is on a PVC (`persistence.enabled`); set `false` for a disposable `emptyDir` |
 | Secret (`ANTHROPIC_API_KEY`, resume) | #37 | done — see [Secrets](#secrets) |
 | Ingress + TLS | #38 | done — see [Ingress + TLS](#ingress--tls) (disabled by default) |
-| Poller CronJob | #39 | pending |
+| Poller CronJob | #39 | done — see [Scheduled poller](#scheduled-poller) (enabled by default) |
 
 ## Key values
 
@@ -60,6 +60,13 @@ separate charts/issues, added incrementally:
 | `ingress.annotations` | `{}` | cert-manager / controller hints |
 | `ingress.hosts` | `[{host: job-store.local, paths: [{path: /, pathType: Prefix}]}]` | |
 | `ingress.tls` | `[]` | list of `{secretName, hosts}` |
+| `poller.enabled` | `true` | create the poller CronJob(s) |
+| `poller.schedule` | `""` | raw cron; overrides `scheduleSpec` when set |
+| `poller.scheduleSpec.daysOfWeek` | `"*"` | cron DOW: `*`, `1-5`, `0,6`, … |
+| `poller.scheduleSpec.times` | `[]` | explicit `HH:MM` list → one CronJob each |
+| `poller.scheduleSpec.timesPerDay` | `6` | used when `times` empty; evenly spaced |
+| `poller.args` | `["--max-new","50"]` | poller CLI args |
+| `poller.concurrencyPolicy` | `Forbid` | no overlapping poll runs |
 
 ## Secrets
 
@@ -130,6 +137,41 @@ The HTTP→HTTPS redirect is controller-specific: `ssl-redirect` above for
 nginx-ingress; on Traefik, redirect at the entrypoint (`web` → `websecure`) or
 via a redirect middleware annotation. DNS for the host is yours to manage (or
 let external-dns pick it up).
+
+## Scheduled poller
+
+Enabled by default. The poller runs as a CronJob and is a **pure HTTP client**
+of job-store — it needs only `JOB_STORE_URL` (set automatically to the in-cluster
+Service), **no DB volume and no Secret** (scoring is delegated to job-store).
+`concurrencyPolicy: Forbid` prevents overlapping runs from racing.
+
+Set the cadence without writing cron. Precedence: **`schedule` > `times` >
+`timesPerDay`**.
+
+```yaml
+poller:
+  scheduleSpec:
+    daysOfWeek: "1-5"          # Mon–Fri  ("*" all, "0,6" weekends, "1,3,5" …)
+    times: ["08:00", "13:00", "18:00"]   # exact clock times → one CronJob each
+```
+
+```yaml
+poller:
+  scheduleSpec:
+    daysOfWeek: "*"
+    timesPerDay: 4             # every 6h, on the hour (times must be empty)
+```
+
+```yaml
+poller:
+  schedule: "*/30 9-17 * * 1-5"   # raw cron escape hatch (overrides the above)
+```
+
+- `times` with mixed minutes (e.g. `08:00` + `13:30`) become **separate
+  CronJobs**, since a single cron line can't fire at two different minutes.
+- `timesPerDay: N` runs N times/day evenly spaced on the hour (6 → every 4h, the
+  default; 24 → hourly). For exact control of minutes/times, use `times` or
+  `schedule`.
 
 ## Hard constraints
 

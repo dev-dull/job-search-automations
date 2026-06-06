@@ -2,7 +2,7 @@
 
 Flask + SQLite backend for the Job Board stack. Serves the inbox UI, runs server-side scoring against Anthropic, holds the `jobs` / `outcomes` / `company_targets` / `settings` tables, and provides the HTTP endpoints the poller and firefox-plugin both call.
 
-The poller (`poller.py`) and the high-priority branch tool (`branch_high_priority.py`) live in this same Python package because they import the backend's `db`, `ranking`, and `urls` modules directly.
+The poller (`poller.py`) is a standalone HTTP client of the backend (it shares only the `adapters` package). The high-priority branch tool (`branch_high_priority.py`) lives in this same Python package because it imports the backend's `db`, `ranking`, and `urls` modules directly.
 
 ## What it does
 
@@ -58,9 +58,9 @@ Only rows flagged `Applied=TRUE` are imported.
 .venv/bin/python poller.py --set-locations "United States,USA,US-,Remote,Americas"
 ```
 
-The poller reads `company_targets` and the per-run filter settings, walks each adapter's response newest-first, filters by deny list and location, lazy-fetches descriptions, and POSTs survivors to `/jobs/score`. It stops at the first URL it already has, then moves to the next target.
+The poller is a **pure HTTP client** of job-store — it holds no DB access. It reads targets (`/companies.json`), existing URLs (`/jobs/urls`), and location settings (`/settings/locations`) over HTTP, walks each adapter's response newest-first, filters by deny list and location, lazy-fetches descriptions, POSTs survivors to `/jobs/score`, and stamps `last_polled` via `/companies/<id>/polled`. It stops at the first URL it already has, then moves to the next target. This lets it run anywhere with network reach to the backend (e.g. the Helm chart's CronJob).
 
-`--max-new N` caps per-target spend on first polls of big tenants.
+The backend URL comes from `--backend` or the `JOB_STORE_URL` env var (default `http://127.0.0.1:5000`). `--max-new N` caps per-target spend on first polls of big tenants.
 
 ## HTTP API
 

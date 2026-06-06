@@ -1,0 +1,91 @@
+{{- if .Values.poller.enabled }}
+{{- $root := . }}
+{{- $p := .Values.poller }}
+{{- $spec := $p.scheduleSpec }}
+{{- $dow := $spec.daysOfWeek | default "*" }}
+{{- /* Build the list of {suffix, cron} CronJobs to emit. */}}
+{{- $schedules := list }}
+{{- if $p.schedule }}
+  {{- $schedules = append $schedules (dict "suffix" "" "cron" $p.schedule) }}
+{{- else if $spec.times }}
+  {{- /* Explicit clock times: one CronJob per time (arbitrary minutes can't
+         share a single cron line). */}}
+  {{- range $t := $spec.times }}
+    {{- $hm := splitList ":" $t }}
+    {{- /* atoi (base-10), not int: Helm's `int` reads "08"/"09" as octal -> 0. */}}
+    {{- $hh := index $hm 0 | atoi }}
+    {{- $mm := index $hm 1 | atoi }}
+    {{- $cron := printf "%d %d * * %s" $mm $hh $dow }}
+    {{- $schedules = append $schedules (dict "suffix" (printf "-%s" (replace ":" "" $t)) "cron" $cron) }}
+  {{- end }}
+{{- else }}
+  {{- /* timesPerDay evenly spaced on the hour: floor(i*24/n) for i in 0..n-1. */}}
+  {{- $n := $spec.timesPerDay | default 6 | int }}
+  {{- $hours := list }}
+  {{- range $i := until $n }}
+    {{- $hours = append $hours (printf "%d" (div (mul $i 24) $n)) }}
+  {{- end }}
+  {{- $schedules = append $schedules (dict "suffix" "" "cron" (printf "0 %s * * %s" (join "," $hours) $dow)) }}
+{{- end }}
+{{- range $s := $schedules }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "job-store.fullname" $root }}-poller{{ $s.suffix }}
+  labels:
+    {{- include "job-store.labels" $root | nindent 4 }}
+spec:
+  schedule: {{ $s.cron | quote }}
+  concurrencyPolicy: {{ $p.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ $p.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ $p.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: {{ $p.activeDeadlineSeconds }}
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            {{- include "job-store.selectorLabels" $root | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          {{- with $root.Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 999
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: poller
+              image: "{{ $p.image.repository | default $root.Values.image.repository }}:{{ $p.image.tag | default $root.Values.image.tag }}"
+              imagePullPolicy: {{ $p.image.pullPolicy | default $root.Values.image.pullPolicy }}
+              # Override the image's gunicorn entrypoint to run the poller CLI.
+              command: ["python", "poller.py"]
+              args:
+                {{- toYaml $p.args | nindent 16 }}
+              env:
+                # In-cluster Service; the poller talks only HTTP (no DB/secret).
+                - name: JOB_STORE_URL
+                  value: http://{{ include "job-store.fullname" $root }}:{{ $root.Values.service.port }}
+                - name: HOME
+                  value: /tmp
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                {{- toYaml $p.resources | nindent 16 }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}
+{{- end }}
+{{- end }}

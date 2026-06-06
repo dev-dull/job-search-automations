@@ -8,38 +8,38 @@ against the target's `deny_list`, and POST the survivors to `/jobs/score`
 CLI:
 
     .venv/bin/python poller.py                # poll all greenhouse targets
-    .venv/bin/python poller.py --dry-run      # print actions, no POSTs, no DB writes
+    .venv/bin/python poller.py --dry-run      # print actions, no POSTs
     .venv/bin/python poller.py --target 5     # poll only target id=5
     .venv/bin/python poller.py --backend http://127.0.0.1:5000
 
-Requires the Flask backend to be reachable (POST /jobs/score). The poller
-reads `company_targets` and existing job URLs directly from `jobs.db` to keep
-the dedupe + filter work local; only the scoring round-trip goes over HTTP.
+The poller is a pure HTTP client of job-store — it holds no DB access. It reads
+targets (`/companies.json`), existing URLs (`/jobs/urls`), and location settings
+(`/settings/locations`) over HTTP, POSTs survivors to `/jobs/score`, and stamps
+`last_polled` via `/companies/<id>/polled`. This lets it run anywhere with
+network reach to the backend (e.g. an out-of-cluster Kubernetes CronJob). The
+backend URL comes from --backend or the JOB_STORE_URL env var.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
 
-import db
 from adapters import ADAPTERS
 
 
-DEFAULT_BACKEND = "http://127.0.0.1:5000"
+DEFAULT_BACKEND = os.environ.get("JOB_STORE_URL", "http://127.0.0.1:5000")
 
 # Persisted in the `settings` table; user overrides via --set-locations and
 # --set-deny-locations. The denylist wins ties so that postings like
 # "Sweden | Remote" or "Toronto, Canada" are rejected even though "Remote"
 # is in the allowlist (a Grafana-style cross-region listing should only
 # survive for the US variant).
-LOCATION_ALLOWLIST_KEY = "location_allowlist"
-LOCATION_DENYLIST_KEY = "location_denylist"
 DEFAULT_LOCATION_ALLOWLIST = [
     "United States", "USA", "U.S.",
     "US-",   # Workday URL-path format: US-CA-Santa-Clara
@@ -72,10 +72,24 @@ DEFAULT_LOCATION_DENYLIST = [
 ]
 
 
-def _existing_urls() -> set[str]:
-    with db.cursor() as conn:
-        rows = conn.execute("SELECT url FROM jobs").fetchall()
-    return {r["url"] for r in rows}
+def _get_json(backend: str, path: str) -> dict:
+    req = urllib.request.Request(f"{backend.rstrip('/')}{path}",
+                                 headers={"accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.load(resp)
+
+
+def _post_json(backend: str, path: str, payload: dict) -> dict:
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(f"{backend.rstrip('/')}{path}", data=body,
+                                 headers={"content-type": "application/json"},
+                                 method="POST")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.load(resp)
+
+
+def _existing_urls(backend: str) -> set[str]:
+    return set(_get_json(backend, "/jobs/urls").get("urls") or [])
 
 
 def _is_denied(title: str, deny_list: list[str]) -> str | None:
@@ -89,20 +103,21 @@ def _is_denied(title: str, deny_list: list[str]) -> str | None:
     return None
 
 
-def _load_list_setting(key: str, default: list[str]) -> list[str]:
-    raw = db.get_setting(key)
+def _csv_or_default(raw: str | None, default: list[str]) -> list[str]:
+    """Split a stored CSV setting, or fall back to the built-in default when
+    the backend reports the setting unset (null)."""
     if raw is None:
         return list(default)
-    parts = [p.strip() for p in raw.split(",")]
-    return [p for p in parts if p]
+    return [p.strip() for p in raw.split(",") if p.strip()]
 
 
-def _load_location_allowlist() -> list[str]:
-    return _load_list_setting(LOCATION_ALLOWLIST_KEY, DEFAULT_LOCATION_ALLOWLIST)
-
-
-def _load_location_denylist() -> list[str]:
-    return _load_list_setting(LOCATION_DENYLIST_KEY, DEFAULT_LOCATION_DENYLIST)
+def _load_location_lists(backend: str) -> tuple[list[str], list[str]]:
+    """Allow/deny lists from GET /settings/locations, with defaults applied."""
+    data = _get_json(backend, "/settings/locations")
+    return (
+        _csv_or_default(data.get("allowlist"), DEFAULT_LOCATION_ALLOWLIST),
+        _csv_or_default(data.get("denylist"), DEFAULT_LOCATION_DENYLIST),
+    )
 
 
 def _location_allowed(loc: str, allowlist: list[str], denylist: list[str]) -> str | None:
@@ -266,11 +281,11 @@ def poll_target(target: dict, *, backend: str, existing_urls: set[str],
             print(f"    ERROR  {job['title']}: {result}")
 
     if not dry_run:
-        db.update_company_target(
-            target["id"],
-            last_polled_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            last_polled_count=summary["found"],
-        )
+        try:
+            _post_json(backend, f"/companies/{target['id']}/polled",
+                       {"last_polled_count": summary["found"]})
+        except Exception as e:
+            summary["error_detail"].append(f"failed to record last_polled: {e}")
 
     return summary
 
@@ -282,7 +297,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--target", type=int, default=None,
                         help="poll only this target id")
     parser.add_argument("--dry-run", action="store_true",
-                        help="print actions, no POSTs, no DB writes")
+                        help="print actions, no POSTs (no scoring, no last_polled)")
     parser.add_argument("--max-new", type=int, default=None,
                         help="cap the number of new jobs scored per target this run "
                              "(useful for first-poll budget on big Workday tenants)")
@@ -298,22 +313,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--show-locations", action="store_true",
                         help="print the currently-configured allow- and deny-lists and exit")
     args = parser.parse_args(argv)
+    backend = args.backend
 
     # One-shot settings management — never polls.
     if args.set_locations is not None:
-        db.set_setting(LOCATION_ALLOWLIST_KEY, args.set_locations)
+        _post_json(backend, "/settings/locations", {"allowlist": args.set_locations})
         print(f"location_allowlist set to: {args.set_locations!r}")
         return 0
     if args.set_deny_locations is not None:
-        db.set_setting(LOCATION_DENYLIST_KEY, args.set_deny_locations)
+        _post_json(backend, "/settings/locations", {"denylist": args.set_deny_locations})
         print(f"location_denylist set to: {args.set_deny_locations!r}")
         return 0
     if args.show_locations:
-        print(f"allowlist: {', '.join(_load_location_allowlist())}")
-        print(f"denylist:  {', '.join(_load_location_denylist())}")
+        allow, deny = _load_location_lists(backend)
+        print(f"allowlist: {', '.join(allow)}")
+        print(f"denylist:  {', '.join(deny)}")
         return 0
 
-    targets = [db.parse_company_target(t) for t in db.list_company_targets()]
+    targets = _get_json(backend, "/companies.json")
     if args.target is not None:
         targets = [t for t in targets if t["id"] == args.target]
         if not targets:
@@ -324,16 +341,17 @@ def main(argv: list[str] | None = None) -> int:
         print("no company_targets configured.", file=sys.stderr)
         return 1
 
-    existing = _existing_urls()
+    existing = _existing_urls(backend)
+    backend_allow, backend_deny = _load_location_lists(backend)
     location_allowlist = (
         [p.strip() for p in args.locations.split(",") if p.strip()]
-        if args.locations else _load_location_allowlist()
+        if args.locations else backend_allow
     )
     location_denylist = (
         [p.strip() for p in args.deny_locations.split(",") if p.strip()]
-        if args.deny_locations else _load_location_denylist()
+        if args.deny_locations else backend_deny
     )
-    print(f"Polling {len(targets)} target(s)  (dry-run={args.dry_run}, backend={args.backend})")
+    print(f"Polling {len(targets)} target(s)  (dry-run={args.dry_run}, backend={backend})")
     print(f"Existing jobs in DB: {len(existing)}")
     if location_allowlist:
         print(f"Location allowlist: {', '.join(location_allowlist)}")

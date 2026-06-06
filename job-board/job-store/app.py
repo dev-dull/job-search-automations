@@ -12,7 +12,7 @@ the ranked list at /.
 
 import json
 import re
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 
 from flask import (Flask, abort, jsonify, redirect, render_template, request,
                    url_for)
@@ -724,6 +724,62 @@ def delete_company(target_id):
 def companies_json():
     """Bot reads this to know which companies to poll and how to filter."""
     return jsonify([_decorate_target(t) for t in db.list_company_targets()])
+
+
+@app.route("/companies/<int:target_id>/polled", methods=["POST"])
+def mark_company_polled(target_id):
+    """Poller stamps last_polled after a run (replaces its old direct DB write).
+    The server owns the timestamp so there's a single clock."""
+    if not db.get_company_target(target_id):
+        abort(404)
+    data = request.get_json(silent=True) or {}
+    db.update_company_target(
+        target_id,
+        last_polled_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        last_polled_count=data.get("last_polled_count"),
+    )
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Poller-facing read/config endpoints. These let the poller run as a pure HTTP
+# client (no jobs.db access), so it can run as an out-of-cluster CronJob.
+# ---------------------------------------------------------------------------
+
+# Location allow/deny lists persisted in the settings table. The poller holds
+# the defaults applied when these are unset.
+LOCATION_ALLOWLIST_KEY = "location_allowlist"
+LOCATION_DENYLIST_KEY = "location_denylist"
+
+
+@app.route("/jobs/urls", methods=["GET"])
+def jobs_urls():
+    """All stored job URLs, for the poller's dedupe / stop-when-seen."""
+    return jsonify({"urls": db.all_job_urls()})
+
+
+@app.route("/settings/locations", methods=["GET"])
+def get_location_settings():
+    """Raw stored allow/deny CSV strings (null when unset; poller applies its
+    own defaults)."""
+    return jsonify({
+        "allowlist": db.get_setting(LOCATION_ALLOWLIST_KEY),
+        "denylist": db.get_setting(LOCATION_DENYLIST_KEY),
+    })
+
+
+@app.route("/settings/locations", methods=["POST"])
+def set_location_settings():
+    """Persist allow/deny CSV strings. Sets only the keys present in the body."""
+    data = request.get_json(silent=True) or {}
+    if "allowlist" in data:
+        db.set_setting(LOCATION_ALLOWLIST_KEY, data["allowlist"])
+    if "denylist" in data:
+        db.set_setting(LOCATION_DENYLIST_KEY, data["denylist"])
+    return jsonify({
+        "allowlist": db.get_setting(LOCATION_ALLOWLIST_KEY),
+        "denylist": db.get_setting(LOCATION_DENYLIST_KEY),
+    })
 
 
 # ---------------------------------------------------------------------------

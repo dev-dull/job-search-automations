@@ -87,5 +87,43 @@ persistence:
   accessModes:
     - ReadWriteOnce
 
+# Scheduled poller (Kubernetes CronJob). The poller is a pure HTTP client of
+# job-store — it needs only JOB_STORE_URL, no DB/PVC and no Secret.
+poller:
+  enabled: true
+  # Raw cron string. When set, it takes precedence over scheduleSpec below
+  # (escape hatch for arbitrary expressions).
+  schedule: ""
+  # Friendly schedule, used when `schedule` is empty. Choose how often to poll
+  # without writing cron:
+  scheduleSpec:
+    # Which days to run. cron day-of-week field: "*" = every day,
+    # "1-5" = Mon-Fri, "0,6" = weekends, "1,3,5" = Mon/Wed/Fri.
+    daysOfWeek: "*"
+    # Specific clock times (24h "HH:MM"). When non-empty, each time becomes its
+    # own CronJob — e.g. ["08:00", "13:00", "18:00"].
+    times: []
+    # Used ONLY when `times` is empty: run this many times/day, evenly spaced on
+    # the hour starting at 00:00. 6 == every 4 hours (the default cadence).
+    timesPerDay: 6
+  # Image for the poller; defaults to the main image when left blank.
+  image:
+    repository: ""
+    tag: ""
+    pullPolicy: ""
+  args: ["--max-new", "50"]
+  # Forbid: overlapping pollers would race and burn redundant Anthropic spend.
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  activeDeadlineSeconds: 1800
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
 nameOverride: ""
 fullnameOverride: ""
