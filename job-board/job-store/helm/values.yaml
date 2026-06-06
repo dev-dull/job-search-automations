@@ -41,8 +41,17 @@ probes:
 # until configured). Use extraEnv for any other app-level config.
 extraEnv: []
 
-# Persistence is owned by the PVC issue (#36). For this skeleton, jobs.db lives
-# on an emptyDir and is lost on pod restart. #36 swaps /data for a PVC.
+# Persistent storage for jobs.db (and its WAL/SHM siblings, which MUST sit on
+# the same volume). When disabled, /data is an emptyDir — fine for dev/test
+# clusters where the inbox is disposable.
+persistence:
+  enabled: true
+  # "" uses the cluster's default StorageClass; "-" disables dynamic
+  # provisioning (binds a pre-created PV); any other value names a class.
+  storageClass: ""
+  size: 5Gi
+  accessModes:
+    - ReadWriteOnce
 
 nameOverride: ""
 fullnameOverride: ""

@@ -22,7 +22,7 @@ separate charts/issues, added incrementally:
 | Concern | Issue | Status |
 |---|---|---|
 | Deployment + Service | #35 | this chart |
-| Persistence (PVC for `jobs.db`) | #36 | pending — `jobs.db` is on an `emptyDir` and is **lost on pod restart** until then |
+| Persistence (PVC for `jobs.db`) | #36 | done — `jobs.db` is on a PVC (`persistence.enabled`); set `false` for a disposable `emptyDir` |
 | Secret (`ANTHROPIC_API_KEY`, resume) | #37 | pending — scoring fails until wired; the inbox + probes work without it |
 | Ingress + TLS | #38 | pending — reach the Service via `kubectl port-forward` for now |
 | Poller CronJob | #39 | pending |
@@ -39,6 +39,10 @@ separate charts/issues, added incrementally:
 | `resources` | 100m/128Mi req, 500m/512Mi limit | tune with profiling data |
 | `service.type` / `service.port` | `ClusterIP` / `5000` | |
 | `extraEnv` | `[]` | list of `{name, value}` appended to the container |
+| `persistence.enabled` | `true` | PVC for `jobs.db`; `false` → disposable `emptyDir` |
+| `persistence.storageClass` | `""` | `""` = cluster default; `"-"` = no dynamic provisioning; else the class name |
+| `persistence.size` | `5Gi` | generous for a single-user inbox |
+| `persistence.accessModes` | `["ReadWriteOnce"]` | RWO is correct for a single-writer deployment |
 
 ## Hard constraints
 

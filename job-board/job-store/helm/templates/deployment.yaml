@@ -26,8 +26,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         runAsGroup: 999
-        # fsGroup so a mounted volume (the PVC in #36) is group-writable by the
-        # runtime user; harmless for the emptyDirs used here.
+        # fsGroup so the persistence PVC is group-writable by the runtime user;
+        # harmless for the emptyDir fallback.
         fsGroup: 999
         seccompProfile:
           type: RuntimeDefault
@@ -44,7 +44,8 @@ spec:
             - name: http
               containerPort: 5000
           env:
-            # DB on the writable /data mount (emptyDir here; PVC in #36).
+            # DB on the writable /data mount (a PVC by default; emptyDir when
+            # persistence is disabled). See persistence.* in values.yaml.
             - name: JOBS_DB_PATH
               value: /data/jobs.db
             # HOME on writable /tmp so gunicorn's control socket and worker
@@ -74,9 +75,16 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
-        # jobs.db. emptyDir => lost on pod restart; #36 replaces this with a PVC.
+        # jobs.db (+ WAL/SHM). Backed by a PVC so state survives pod restarts;
+        # emptyDir (disposable) when persistence is disabled. fsGroup (above)
+        # makes the mount writable by the non-root runtime user.
         - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "job-store.fullname" . }}-data
+          {{- else }}
           emptyDir: {}
+          {{- end }}
         # Writable scratch required because the root filesystem is read-only:
         # gunicorn worker heartbeat + control socket (via HOME=/tmp) and tmpfiles.
         - name: tmp
