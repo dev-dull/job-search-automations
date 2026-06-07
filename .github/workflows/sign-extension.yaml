@@ -38,9 +38,9 @@ jobs:
             --artifacts-dir=web-ext-artifacts
 
       - name: Add a stable-named copy
-        # A predictable asset name lets the Helm chart build the download URL
-        # from repo + version (extension.version) without knowing web-ext's
-        # versioned filename. Renaming a signed xpi is safe (signature is inside).
+        # A predictable asset name (job-fit-scorer.xpi) lets the image build pull
+        # it from releases/latest/download/ without knowing web-ext's versioned
+        # filename. Renaming a signed xpi is safe (the signature is inside).
         run: |
           src=$(ls web-ext-artifacts/*.xpi | head -1)
           cp "$src" web-ext-artifacts/job-fit-scorer.xpi
@@ -56,3 +56,15 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: web-ext-artifacts/*.xpi
+
+  # Rebuild the container image so it bakes in the just-released plugin. Runs
+  # after the asset is attached, so the build's "fetch latest release asset"
+  # step picks up this version. Release-only (a dispatch test shouldn't ship).
+  build-image:
+    needs: sign
+    if: github.event_name == 'release'
+    uses: ./.github/workflows/build-job-store.yaml
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit

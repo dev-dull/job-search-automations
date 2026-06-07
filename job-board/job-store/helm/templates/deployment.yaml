@@ -31,29 +31,6 @@ spec:
         fsGroup: 999
         seccompProfile:
           type: RuntimeDefault
-      {{- if .Values.extension.enabled }}
-      {{- $exturl := .Values.extension.xpiUrl }}
-      {{- if and (not $exturl) .Values.extension.version }}
-      {{- $exturl = printf "https://github.com/%s/releases/download/%s/job-fit-scorer.xpi" .Values.extension.repo .Values.extension.version }}
-      {{- end }}
-      {{- $exturl = required "extension.enabled=true needs extension.xpiUrl or extension.version" $exturl }}
-      initContainers:
-        # Fetch the signed .xpi into a writable emptyDir at deploy time (the
-        # image doesn't ship it). -f makes an HTTP error fail the pod loudly.
-        - name: fetch-extension
-          image: {{ .Values.extension.fetchImage }}
-          command: ["sh", "-c"]
-          args:
-            - curl -fSL {{ $exturl | quote }} -o /ext/job-fit-scorer.xpi
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
-          volumeMounts:
-            - name: extension
-              mountPath: /ext
-      {{- end }}
       containers:
         - name: job-store
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -84,11 +61,6 @@ spec:
                   key: anthropic-api-key
             - name: RESUME_PATH
               value: /etc/job-store/resume.yaml
-            {{- if .Values.extension.enabled }}
-            # Serve the fetched .xpi from the shared volume.
-            - name: EXTENSION_DIST_DIR
-              value: /ext
-            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -114,11 +86,6 @@ spec:
             - name: resume
               mountPath: /etc/job-store
               readOnly: true
-            {{- if .Values.extension.enabled }}
-            - name: extension
-              mountPath: /ext
-              readOnly: true
-            {{- end }}
       volumes:
         # jobs.db (+ WAL/SHM). Backed by a PVC so state survives pod restarts;
         # emptyDir (disposable) when persistence is disabled. fsGroup (above)
@@ -142,8 +109,3 @@ spec:
             items:
               - key: resume.yaml
                 path: resume.yaml
-        {{- if .Values.extension.enabled }}
-        # Holds the signed .xpi the initContainer fetched; served at /extension.
-        - name: extension
-          emptyDir: {}
-        {{- end }}

@@ -1,7 +1,9 @@
 name: Build job-store image
 
-# Builds and pushes the job-store container image to GHCR. Triggers on changes
-# to the job-store source (or this workflow) on main, and on manual dispatch.
+# Builds and pushes the job-store container image to GHCR, baking in the latest
+# signed Firefox .xpi. Triggers on job-store source changes on main, on manual
+# dispatch, and via workflow_call from sign-extension.yaml after a new plugin is
+# signed (so a plugin release produces a fresh image containing it).
 on:
   push:
     branches: [main]
@@ -14,6 +16,7 @@ on:
       - '!job-board/job-store/**.md'
       - '.github/workflows/build-job-store.yaml'
   workflow_dispatch:
+  workflow_call:
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/job-store
@@ -26,6 +29,20 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v6
+
+      - name: Bake in the latest signed extension (best-effort)
+        # Pull the stable-named asset from the latest release into the build
+        # context so the Dockerfile bakes it in. Absent (no release yet) → build
+        # without it; the inbox just hides the install link.
+        run: |
+          mkdir -p job-board/job-store/extension
+          if curl -fSL -o job-board/job-store/extension/job-fit-scorer.xpi \
+               "https://github.com/${{ github.repository }}/releases/latest/download/job-fit-scorer.xpi"; then
+            echo "baked in signed extension"
+          else
+            echo "no signed extension release yet; building without it"
+            rm -f job-board/job-store/extension/job-fit-scorer.xpi
+          fi
 
       - uses: docker/setup-buildx-action@v3
 
@@ -41,10 +58,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
-          # :{git-sha} always; :latest only on the default branch.
+          # Always :latest + :{git-sha}. This workflow only runs on main pushes,
+          # manual dispatch, and workflow_call from a release — all of which
+          # should advance :latest (a release-triggered build runs on the tag
+          # ref, so is_default_branch wouldn't fire).
           tags: |
             type=sha,prefix=,format=long
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
 
       - name: Build and push
         uses: docker/build-push-action@v6

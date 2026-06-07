@@ -28,7 +28,8 @@ FROM python:3.12-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
-    JOBS_DB_PATH=/data/jobs.db
+    JOBS_DB_PATH=/data/jobs.db \
+    EXTENSION_DIST_DIR=/app/extension
 
 COPY --from=build /opt/venv /opt/venv
 
@@ -39,6 +40,12 @@ RUN useradd --system --uid 1000 --create-home appuser \
     && mkdir -p /data && chown appuser:appuser /data
 
 WORKDIR /app
+# CI drops the signed Firefox .xpi into ./extension/ before building so it's
+# baked into the image and served at /extension (EXTENSION_DIST_DIR above) —
+# works under both `docker run` and Helm. Local builds without it just omit the
+# install link (the route 404s cleanly). The dir is created so COPY/chown work
+# even when no .xpi is present.
+RUN mkdir -p /app/extension
 COPY . /app
 RUN chown -R appuser:appuser /app
 USER appuser

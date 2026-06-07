@@ -5,3 +5,5 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+# Signed .xpi baked in at image-build time by CI (not committed).
+extension/

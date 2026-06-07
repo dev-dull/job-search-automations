@@ -50,7 +50,7 @@ job-store reads these env vars:
 | `ANTHROPIC_MODEL` | no | defaults to `claude-haiku-4-5` |
 | `GROWTH_KEYWORDS` | no | comma-separated phrases the scorer rewards (career-growth signal) |
 | `JOBS_DB_PATH` | no | SQLite DB location; defaults next to the code (the container sets `/data/jobs.db`) |
-| `EXTENSION_DIST_DIR` | no | dir holding the signed Firefox `.xpi` served at `/extension`; defaults to `firefox-plugin/dist/` |
+| `EXTENSION_DIST_DIR` | no | dir holding the signed Firefox `.xpi` served at `/extension`. Released images bake it in at `/app/extension`; local `flask run` defaults to `firefox-plugin/dist/` |
 
 The poller has no env-var requirements of its own; it talks to job-store over HTTP. It honors `JOB_STORE_URL` for the backend URL.
 

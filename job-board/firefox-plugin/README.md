@@ -43,14 +43,21 @@ Signing is automated by [`.github/workflows/sign-extension.yaml`](../../.github/
 
 **Each release:**
 1. Bump `manifest.json` `version` (AMO refuses to re-sign an existing version).
-2. Publish a GitHub Release. The workflow runs `web-ext sign --channel=unlisted`
-   and **attaches the signed `.xpi` to the release**.
-3. Make the `.xpi` reachable by job-store: drop it in `EXTENSION_DIST_DIR`
-   (defaults to `firefox-plugin/dist/`; in the container image — which doesn't
-   ship `firefox-plugin/` — set `EXTENSION_DIST_DIR` to a mounted path). The
-   `/extension` route serves the newest `.xpi` there.
+2. Publish a GitHub Release. `sign-extension.yaml` runs `web-ext sign
+   --channel=unlisted`, attaches the signed `.xpi` (and a stable-named
+   `job-fit-scorer.xpi`) to the release, then triggers an image rebuild.
+3. The image rebuild bakes the signed `.xpi` into `ghcr.io/.../job-store:latest`
+   (the build pulls `releases/latest/download/job-fit-scorer.xpi`). Pull the new
+   image and the `/extension` install link works under both `docker run` and
+   Helm — nothing else to configure. Backend-only image builds also re-bake the
+   current plugin, so it's never dropped.
 
-**Local signing** (instead of CI), same result:
+The `/extension` route serves the `.xpi` from `EXTENSION_DIST_DIR` (the image
+sets this to `/app/extension`; for a local `flask run` it defaults to
+`firefox-plugin/dist/`). The route 404s and the inbox hides the link when no
+`.xpi` is present.
+
+**Local signing** (instead of CI):
 
 ```bash
 cd job-board/firefox-plugin
