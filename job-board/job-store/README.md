@@ -7,7 +7,7 @@ The poller (`poller.py`) is a standalone HTTP client of the backend (it shares o
 ## What it does
 
 - **Stores** every discovered job in `jobs.db` (SQLite). Dedupe by `dedupe_key` so the same posting reached via different URL shapes (Greenhouse embed wrapper vs `boards.greenhouse.io` direct) collapses to one row.
-- **Scores** server-side. Both the plugin and the poller POST a description with no `fit_score`; this service calls Anthropic with the resume YAML and the prompt, persists the analysis, returns the score.
+- **Scores** server-side. Both the plugin and the poller POST a description with no `fit_score`; this service calls Anthropic with the resume (any text format — read verbatim) and the prompt, persists the analysis, returns the score.
 - **Ranks** on read with `fit_score * age_decay(posted_at) * platform_factor(ats)`. Recomputed every request so stale rows naturally drift down without needing a manual rerank pass.
 - **Triages** via the UI at `/`: ranked list, status filters, apply/dismiss/outcome buttons, cleanup-stale button, re-rank-all button.
 - **Manages targets** via `/companies`: company_targets CRUD with per-company deny lists, last_polled timestamps, and an auto-resolve probe for wrapper pages that embed a supported ATS.

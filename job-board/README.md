@@ -46,7 +46,7 @@ job-store reads these env vars:
 | Variable | Required | Purpose |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | yes | server-side scoring |
-| `RESUME_PATH` | yes | absolute path to the resume YAML (e.g. `~/wip/resume/resume_details.yaml`) |
+| `RESUME_PATH` | yes | absolute path to the resume file — any text format (YAML/JSON/Markdown/LaTeX/HTML), read verbatim (e.g. `~/wip/resume/resume_details.yaml`) |
 | `ANTHROPIC_MODEL` | no | defaults to `claude-haiku-4-5` |
 | `GROWTH_KEYWORDS` | no | comma-separated phrases the scorer rewards (career-growth signal) |
 | `JOBS_DB_PATH` | no | SQLite DB location; defaults next to the code (the container sets `/data/jobs.db`) |

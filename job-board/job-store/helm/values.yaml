@@ -77,14 +77,18 @@ secret:
   # API key is always required. The resume requirement is conditional — see
   # resume.fromSecret below.
   anthropicApiKey: ""
-  resumeYaml: ""
+  # Resume content (any text format — YAML/JSON/Markdown/LaTeX/HTML; read
+  # verbatim, never parsed). Required when create=true and resume.fromSecret.
+  resume: ""
 
 # Resume sourcing. The resume isn't a credential; by default it's projected from
 # the Secret (back-compat), but you can source it independently — e.g. an
 # initContainer that git-clones a resume-as-code repo into an extraVolume.
 resume:
+  # Where the app reads the resume (RESUME_PATH). Any extension — the file is
+  # read as text. Default is .yaml; set .json/.md/.tex/.html to match yours.
   path: /etc/job-store/resume.yaml
-  # true: mount the resume from the Secret (requires secret.resumeYaml when
+  # true: mount the resume from the Secret (requires secret.resume when
   # secret.create). false: the chart mounts no resume — provide it yourself via
   # initContainers + extraVolumes/extraVolumeMounts at resume.path.
   fromSecret: true

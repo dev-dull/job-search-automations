@@ -8,7 +8,8 @@ directly for now (`fit_score` is in the POST payload); when a caller omits
 Configuration (env vars):
 - ANTHROPIC_API_KEY (required)
 - ANTHROPIC_MODEL (optional; defaults to claude-haiku-4-5)
-- RESUME_PATH (optional; defaults to ../resume_details.yaml relative to this file)
+- RESUME_PATH (required; path to your resume file in any text format —
+  YAML, JSON, Markdown, LaTeX, HTML — read verbatim into the prompt)
 - GROWTH_KEYWORDS (optional; comma-separated career-growth keywords)
 """
 
@@ -87,15 +88,17 @@ def _resume_path() -> Path:
     override = os.environ.get("RESUME_PATH")
     if not override:
         raise RuntimeError(
-            "RESUME_PATH is not set. Point it at your resume YAML, "
+            "RESUME_PATH is not set. Point it at your resume file (any text "
+            "format — YAML, JSON, Markdown, LaTeX, HTML), "
             "e.g. RESUME_PATH=~/wip/resume/resume_details.yaml"
         )
     return Path(override).expanduser()
 
 
 def read_resume() -> dict[str, Any]:
-    """Read resume_details.yaml from disk. Re-read per call by design: the
-    file is small and reads are local, so simplicity wins over caching."""
+    """Read the resume file from disk as text (any format — it's passed to the
+    model verbatim, never parsed). Re-read per call by design: the file is small
+    and reads are local, so simplicity wins over caching."""
     path = _resume_path()
     if not path.exists():
         raise FileNotFoundError(

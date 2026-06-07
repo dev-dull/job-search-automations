@@ -12,7 +12,7 @@ Scoring credentials are required — see [Secrets](#secrets). Quick start:
 ```bash
 helm install job-store ./helm -n job-board --create-namespace \
   --set secret.anthropicApiKey=sk-ant-... \
-  --set-file secret.resumeYaml=./resume_details.yaml
+  --set-file secret.resume=./resume_details.yaml
 ```
 
 Render without installing:
@@ -54,7 +54,7 @@ separate charts/issues, added incrementally:
 | `secret.create` | `true` | chart creates the Secret from the values below |
 | `secret.existingSecret` | `""` | when set, use this externally-managed Secret instead |
 | `secret.anthropicApiKey` | `""` | **required** when `create: true` |
-| `secret.resumeYaml` | `""` | **required** when `create: true` **and** `resume.fromSecret: true` |
+| `secret.resume` | `""` | resume content (any text format); **required** when `create: true` **and** `resume.fromSecret: true` |
 | `resume.path` | `/etc/job-store/resume.yaml` | where the app reads the resume (`RESUME_PATH`) |
 | `resume.fromSecret` | `true` | mount the resume from the Secret; `false` → source it yourself |
 | `initContainers` | `[]` | extra initContainers (e.g. git-clone the resume) |
@@ -78,7 +78,7 @@ separate charts/issues, added incrementally:
 `ANTHROPIC_API_KEY` and the resume drive server-side scoring. The key is always
 a Secret. The resume is **also** in the Secret by default (`resume.fromSecret:
 true`), mounted read-only at `resume.path`; the Secret then needs both keys
-`anthropic-api-key` and `resume.yaml`. The resume isn't a credential, though —
+`anthropic-api-key` and `resume`. The resume isn't a credential, though —
 to source it independently (e.g. from a resume-as-code git repo), set
 `resume.fromSecret: false` and the Secret only needs `anthropic-api-key` (see
 [Resume from a git repo](#resume-from-a-git-repo)).
@@ -88,7 +88,7 @@ to source it independently (e.g. from a resume-as-code git repo), set
 ```bash
 helm install job-store ./helm -n job-board --create-namespace \
   --set secret.anthropicApiKey=sk-ant-... \
-  --set-file secret.resumeYaml=./resume_details.yaml
+  --set-file secret.resume=./resume_details.yaml
 ```
 
 With `secret.create: true`, `helm template`/`install` fails fast if either value
@@ -100,7 +100,7 @@ is unset.
 ```bash
 kubectl -n job-board create secret generic job-store-creds \
   --from-literal=anthropic-api-key=sk-ant-... \
-  --from-file=resume.yaml=./resume_details.yaml   # or via your secrets operator
+  --from-file=resume=./resume_details.yaml   # any text format; or via your secrets operator
 
 helm install job-store ./helm -n job-board \
   --set secret.create=false \
