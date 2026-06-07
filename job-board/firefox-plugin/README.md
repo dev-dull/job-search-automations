@@ -43,12 +43,18 @@ Signing is automated by [`.github/workflows/sign-extension.yaml`](../../.github/
 
 **Each release:**
 1. Bump `manifest.json` `version` (AMO refuses to re-sign an existing version).
-2. Publish a GitHub Release. `sign-extension.yaml` runs `web-ext sign
-   --channel=unlisted`, attaches the signed `.xpi` (and a stable-named
-   `job-fit-scorer.xpi`) to the release, then triggers an image rebuild.
-3. The image rebuild bakes the signed `.xpi` into `ghcr.io/.../job-store:latest`
-   (the build pulls `releases/latest/download/job-fit-scorer.xpi`). Pull the new
-   image and the `/extension` install link works under both `docker run` and
+2. Push a **`plugin-v<version>`** tag (e.g. `plugin-v0.1.0`) — a namespace
+   separate from the Gemini Actions' `vX.Y.Z` releases:
+   ```bash
+   git tag plugin-v0.1.0 && git push origin plugin-v0.1.0
+   ```
+   `sign-extension.yaml` runs `web-ext sign --channel=unlisted`, publishes the
+   signed `.xpi` to the floating **`plugin-latest`** release (not marked
+   "Latest", so it doesn't displace the actions' release), then triggers an
+   image rebuild.
+3. The image rebuild bakes the `.xpi` into `ghcr.io/.../job-store:latest` (the
+   build pulls `releases/download/plugin-latest/job-fit-scorer.xpi`). Pull the
+   new image and the `/extension` install link works under both `docker run` and
    Helm — nothing else to configure. Backend-only image builds also re-bake the
    current plugin, so it's never dropped.
 

@@ -30,14 +30,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Bake in the latest signed extension (best-effort)
-        # Pull the stable-named asset from the latest release into the build
-        # context so the Dockerfile bakes it in. Absent (no release yet) → build
-        # without it; the inbox just hides the install link.
+      - name: Bake in the signed extension (best-effort)
+        # Pull the asset from the dedicated `plugin-latest` release (NOT
+        # releases/latest, which is the Gemini Actions' release) into the build
+        # context so the Dockerfile bakes it in. Absent (no plugin release yet) →
+        # build without it; the inbox just hides the install link.
         run: |
           mkdir -p job-board/job-store/extension
           if curl -fSL -o job-board/job-store/extension/job-fit-scorer.xpi \
-               "https://github.com/${{ github.repository }}/releases/latest/download/job-fit-scorer.xpi"; then
+               "https://github.com/${{ github.repository }}/releases/download/plugin-latest/job-fit-scorer.xpi"; then
             echo "baked in signed extension"
           else
             echo "no signed extension release yet; building without it"

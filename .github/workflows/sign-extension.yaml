@@ -1,22 +1,27 @@
 name: Sign Firefox extension
 
 # Signs the plugin via Mozilla AMO as an UNLISTED (self-distributed) add-on and
-# attaches the signed .xpi to the GitHub Release. Unlisted signing is automated
-# (no human review), produces a .xpi installable on stock release Firefox, and
-# is NOT publicly listed on addons.mozilla.org.
+# publishes the signed .xpi to the floating `plugin-latest` release. Unlisted
+# signing is automated (no human review), produces a .xpi installable on stock
+# release Firefox, and is NOT publicly listed on addons.mozilla.org.
+#
+# Triggered by pushing a `plugin-v*` tag — a namespace separate from the Gemini
+# Actions' `vX.Y.Z` releases (cut-release.yaml), so plugin and action versions
+# don't collide. The `plugin-latest` release is NOT marked "Latest", so it never
+# displaces the actions' latest release.
 #
 # Requires two repo secrets from https://addons.mozilla.org/developers/addon/api/key/:
 #   AMO_JWT_ISSUER, AMO_JWT_SECRET
 #
-# Bump firefox-plugin/manifest.json "version" before each release — AMO refuses
-# to re-sign a version it has already signed.
+# Bump firefox-plugin/manifest.json "version" before tagging — AMO refuses to
+# re-sign a version it has already signed.
 on:
-  release:
-    types: [published]
+  push:
+    tags: ['plugin-v*']
   workflow_dispatch:
 
 permissions:
-  contents: write   # attach the signed .xpi to the release
+  contents: write   # publish the plugin-latest release
 
 jobs:
   sign:
@@ -39,8 +44,8 @@ jobs:
 
       - name: Add a stable-named copy
         # A predictable asset name (job-fit-scorer.xpi) lets the image build pull
-        # it from releases/latest/download/ without knowing web-ext's versioned
-        # filename. Renaming a signed xpi is safe (the signature is inside).
+        # it from releases/download/plugin-latest/ without knowing web-ext's
+        # versioned filename. Renaming a signed xpi is safe (signature is inside).
         run: |
           src=$(ls web-ext-artifacts/*.xpi | head -1)
           cp "$src" web-ext-artifacts/job-fit-scorer.xpi
@@ -51,18 +56,20 @@ jobs:
           path: web-ext-artifacts/*.xpi
           if-no-files-found: error
 
-      - name: Attach signed .xpi to the release
-        if: github.event_name == 'release'
+      - name: Publish to the plugin-latest release
+        # Floating release the image build fetches from. make_latest:false so it
+        # doesn't displace the Gemini Actions' latest (vX.Y.Z) release.
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: plugin-latest
+          name: Firefox extension (latest signed)
+          make_latest: "false"
           files: web-ext-artifacts/*.xpi
 
-  # Rebuild the container image so it bakes in the just-released plugin. Runs
-  # after the asset is attached, so the build's "fetch latest release asset"
-  # step picks up this version. Release-only (a dispatch test shouldn't ship).
+  # Rebuild the container image so it bakes in the just-signed plugin. Runs after
+  # the asset is published to plugin-latest, which the build then fetches.
   build-image:
     needs: sign
-    if: github.event_name == 'release'
     uses: ./.github/workflows/build-job-store.yaml
     permissions:
       contents: read
