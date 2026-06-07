@@ -74,9 +74,20 @@ secret:
   # keys — `anthropic-api-key` and `resume.yaml`.
   create: true
   existingSecret: ""
-  # REQUIRED when create=true (helm template/install fails clearly if unset).
+  # API key is always required. The resume requirement is conditional — see
+  # resume.fromSecret below.
   anthropicApiKey: ""
   resumeYaml: ""
+
+# Resume sourcing. The resume isn't a credential; by default it's projected from
+# the Secret (back-compat), but you can source it independently — e.g. an
+# initContainer that git-clones a resume-as-code repo into an extraVolume.
+resume:
+  path: /etc/job-store/resume.yaml
+  # true: mount the resume from the Secret (requires secret.resumeYaml when
+  # secret.create). false: the chart mounts no resume — provide it yourself via
+  # initContainers + extraVolumes/extraVolumeMounts at resume.path.
+  fromSecret: true
 
 persistence:
   enabled: true
@@ -124,6 +135,13 @@ poller:
     limits:
       cpu: 500m
       memory: 256Mi
+
+# Generic pod passthroughs (e.g. to git-clone the resume in an initContainer, or
+# run a sidecar that keeps it fresh). All default empty.
+initContainers: []        # extra initContainers (list of container specs)
+extraContainers: []       # sidecar containers alongside job-store
+extraVolumes: []          # extra pod volumes
+extraVolumeMounts: []     # extra mounts on the job-store container
 
 nameOverride: ""
 fullnameOverride: ""

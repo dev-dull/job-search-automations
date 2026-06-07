@@ -54,7 +54,12 @@ separate charts/issues, added incrementally:
 | `secret.create` | `true` | chart creates the Secret from the values below |
 | `secret.existingSecret` | `""` | when set, use this externally-managed Secret instead |
 | `secret.anthropicApiKey` | `""` | **required** when `create: true` |
-| `secret.resumeYaml` | `""` | **required** when `create: true` |
+| `secret.resumeYaml` | `""` | **required** when `create: true` **and** `resume.fromSecret: true` |
+| `resume.path` | `/etc/job-store/resume.yaml` | where the app reads the resume (`RESUME_PATH`) |
+| `resume.fromSecret` | `true` | mount the resume from the Secret; `false` → source it yourself |
+| `initContainers` | `[]` | extra initContainers (e.g. git-clone the resume) |
+| `extraContainers` | `[]` | sidecar containers (e.g. keep the resume fresh) |
+| `extraVolumes` / `extraVolumeMounts` | `[]` | extra pod volumes / job-store mounts |
 | `ingress.enabled` | `false` | create an Ingress; off → `port-forward`/LoadBalancer |
 | `ingress.className` | `""` | ingress class (e.g. `nginx`); `""` = cluster default |
 | `ingress.annotations` | `{}` | cert-manager / controller hints |
@@ -70,11 +75,13 @@ separate charts/issues, added incrementally:
 
 ## Secrets
 
-`ANTHROPIC_API_KEY` and the resume drive server-side scoring. The resume is a
-Secret (not a ConfigMap) because it holds personal information. The Deployment
-reads the key from `secretKeyRef` and mounts the resume read-only at
-`/etc/job-store/resume.yaml` (`RESUME_PATH`). Either Secret form must carry the
-same two keys: `anthropic-api-key` and `resume.yaml`.
+`ANTHROPIC_API_KEY` and the resume drive server-side scoring. The key is always
+a Secret. The resume is **also** in the Secret by default (`resume.fromSecret:
+true`), mounted read-only at `resume.path`; the Secret then needs both keys
+`anthropic-api-key` and `resume.yaml`. The resume isn't a credential, though —
+to source it independently (e.g. from a resume-as-code git repo), set
+`resume.fromSecret: false` and the Secret only needs `anthropic-api-key` (see
+[Resume from a git repo](#resume-from-a-git-repo)).
 
 **Chart-managed (quick start).** The chart creates the Secret:
 
@@ -99,6 +106,53 @@ helm install job-store ./helm -n job-board \
   --set secret.create=false \
   --set secret.existingSecret=job-store-creds
 ```
+
+### Resume from a git repo
+
+Set `resume.fromSecret: false` and source the resume yourself via the generic
+`initContainers` / `extraContainers` / `extraVolumes` / `extraVolumeMounts`
+passthroughs — the chart bakes in no git logic. A read-only deploy key is the
+only secret involved; the resume never enters your secret store and is re-cloned
+fresh on each pod start.
+
+```yaml
+resume:
+  fromSecret: false
+  path: /resume/resume_details.yaml
+
+extraVolumes:
+  - name: resume
+    emptyDir: {}
+  - name: resume-clone-key            # read-only deploy key for the resume repo
+    secret: { secretName: resume-clone-key, defaultMode: 0400 }
+extraVolumeMounts:
+  - { name: resume, mountPath: /resume }
+
+initContainers:
+  - name: clone-resume
+    image: alpine/git:2.45.2
+    env: [{ name: HOME, value: /tmp }]   # play nice with readOnlyRootFilesystem
+    command: ["sh", "-c"]
+    args:
+      - >
+        GIT_SSH_COMMAND="ssh -i /keys/id_ed25519 -o StrictHostKeyChecking=accept-new"
+        git clone --depth 1 git@github.com:OWNER/resume.git /resume
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities: { drop: ["ALL"] }
+    volumeMounts:
+      - { name: resume, mountPath: /resume }
+      - { name: resume-clone-key, mountPath: /keys, readOnly: true }
+      - { name: tmp, mountPath: /tmp }     # the chart's tmp emptyDir, or add your own
+```
+
+For **live** refresh without pod restarts, add a sidecar via `extraContainers`
+that `git -C /resume pull`s on a loop (a separate CronJob can't help — the
+`emptyDir` is per-pod). Otherwise the resume refreshes on `rollout restart`.
+
+> The example mounts the chart's internal `tmp` emptyDir for `$HOME`; if that
+> name ever changes, add your own tmp volume via `extraVolumes`.
 
 ## Ingress + TLS
 

@@ -31,6 +31,10 @@ spec:
         fsGroup: 999
         seccompProfile:
           type: RuntimeDefault
+      {{- with .Values.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: job-store
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -52,15 +56,17 @@ spec:
             # heartbeat files don't hit the read-only root filesystem.
             - name: HOME
               value: /tmp
-            # Server-side scoring credentials. The key comes from the Secret;
-            # the resume is file-mounted (see the resume volume below).
+            # API key (always a Secret). The resume is read from RESUME_PATH —
+            # by default a file projected from the Secret (resume.fromSecret),
+            # but an operator can source it elsewhere (e.g. an initContainer
+            # git-clone into an extraVolume) by setting resume.fromSecret=false.
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "job-store.secretName" . }}
                   key: anthropic-api-key
             - name: RESUME_PATH
-              value: /etc/job-store/resume.yaml
+              value: {{ .Values.resume.path | quote }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -83,9 +89,17 @@ spec:
               mountPath: /data
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.resume.fromSecret }}
             - name: resume
-              mountPath: /etc/job-store
+              mountPath: {{ dir .Values.resume.path | quote }}
               readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        {{- with .Values.extraContainers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       volumes:
         # jobs.db (+ WAL/SHM). Backed by a PVC so state survives pod restarts;
         # emptyDir (disposable) when persistence is disabled. fsGroup (above)
@@ -101,11 +115,16 @@ spec:
         # gunicorn worker heartbeat + control socket (via HOME=/tmp) and tmpfiles.
         - name: tmp
           emptyDir: {}
+        {{- if .Values.resume.fromSecret }}
         # Resume YAML projected from the Secret as a single read-only file at
-        # /etc/job-store/resume.yaml (the anthropic key is env-only, not a file).
+        # resume.path (the anthropic key is env-only, not a file).
         - name: resume
           secret:
             secretName: {{ include "job-store.secretName" . }}
             items:
               - key: resume.yaml
-                path: resume.yaml
+                path: {{ base .Values.resume.path | quote }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
