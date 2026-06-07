@@ -14,8 +14,11 @@ import json
 import re
 from datetime import datetime, date, timedelta, timezone
 
+import glob
+import os
+
 from flask import (Flask, abort, jsonify, redirect, render_template, request,
-                   url_for)
+                   send_file, url_for)
 
 import db
 import ranking
@@ -271,6 +274,7 @@ def index():
         filter_status=status,
         cleanup_days=cleanup_days,
         cleanup_summary=cleanup_summary,
+        extension_available=_extension_xpi() is not None,
     )
 
 
@@ -780,6 +784,61 @@ def set_location_settings():
         "allowlist": db.get_setting(LOCATION_ALLOWLIST_KEY),
         "denylist": db.get_setting(LOCATION_DENYLIST_KEY),
     })
+
+
+# ---------------------------------------------------------------------------
+# Firefox extension distribution — install from the inbox instead of
+# about:debugging. The signed (unlisted) .xpi is a CI build artifact
+# (web-ext sign); drop it in EXTENSION_DIST_DIR and the inbox shows an install
+# link. Defaults to the plugin's dist/ for local dev; in the container image
+# (which doesn't ship firefox-plugin/) set EXTENSION_DIST_DIR to a mounted path.
+# ---------------------------------------------------------------------------
+
+_PLUGIN_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "..", "firefox-plugin")
+EXTENSION_DIST_DIR = os.environ.get("EXTENSION_DIST_DIR") or os.path.join(_PLUGIN_DIR, "dist")
+
+
+def _extension_xpi():
+    """Newest .xpi in the dist dir, or None when none is present."""
+    xpis = sorted(glob.glob(os.path.join(EXTENSION_DIST_DIR, "*.xpi")),
+                  key=os.path.getmtime)
+    return xpis[-1] if xpis else None
+
+
+def _plugin_manifest():
+    try:
+        with open(os.path.join(_PLUGIN_DIR, "manifest.json")) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+@app.route("/extension")
+def extension_download():
+    """Serve the signed .xpi. A plain link to this triggers Firefox's install
+    prompt (the served content type is what matters; no JS install API)."""
+    xpi = _extension_xpi()
+    if not xpi:
+        abort(404, "Firefox extension not published yet — see firefox-plugin/README.md.")
+    return send_file(xpi, mimetype="application/x-xpinstall",
+                     as_attachment=False, download_name=os.path.basename(xpi))
+
+
+@app.route("/extension/updates.json")
+def extension_updates():
+    """Firefox self-hosted update manifest. Only consulted when the signed xpi's
+    manifest sets gecko.update_url to this URL (see firefox-plugin/README.md)."""
+    manifest = _plugin_manifest()
+    version = manifest.get("version")
+    gecko_id = (manifest.get("browser_specific_settings", {})
+                .get("gecko", {}).get("id"))
+    if not (version and gecko_id and _extension_xpi()):
+        abort(404)
+    return jsonify({"addons": {gecko_id: {"updates": [
+        {"version": version,
+         "update_link": request.host_url.rstrip("/") + "/extension"},
+    ]}}})
 
 
 # ---------------------------------------------------------------------------

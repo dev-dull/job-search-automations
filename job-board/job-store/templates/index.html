@@ -11,6 +11,10 @@
     <div style="display: flex; gap: 1rem; margin-bottom: 0.5rem; font-weight: 600;">
       <a href="/" style="text-decoration: underline;">Inbox</a>
       <a href="/companies">Companies</a>
+      {% if extension_available %}
+      <a href="/extension" title="Install the Firefox extension"
+         style="margin-left: auto;">⤓ Install Firefox extension</a>
+      {% endif %}
     </div>
     <nav>
       <a href="?status=open" class="{{ 'active' if filter_status == 'open' else '' }}">Open ({{ counts.open or 0 }})</a>

@@ -1,0 +1,50 @@
+name: Sign Firefox extension
+
+# Signs the plugin via Mozilla AMO as an UNLISTED (self-distributed) add-on and
+# attaches the signed .xpi to the GitHub Release. Unlisted signing is automated
+# (no human review), produces a .xpi installable on stock release Firefox, and
+# is NOT publicly listed on addons.mozilla.org.
+#
+# Requires two repo secrets from https://addons.mozilla.org/developers/addon/api/key/:
+#   AMO_JWT_ISSUER, AMO_JWT_SECRET
+#
+# Bump firefox-plugin/manifest.json "version" before each release — AMO refuses
+# to re-sign a version it has already signed.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # attach the signed .xpi to the release
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Sign (unlisted) via AMO
+        run: |
+          npx --yes web-ext@latest sign \
+            --channel=unlisted \
+            --api-key="${{ secrets.AMO_JWT_ISSUER }}" \
+            --api-secret="${{ secrets.AMO_JWT_SECRET }}" \
+            --source-dir=job-board/firefox-plugin \
+            --artifacts-dir=web-ext-artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-xpi
+          path: web-ext-artifacts/*.xpi
+          if-no-files-found: error
+
+      - name: Attach signed .xpi to the release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v3
+        with:
+          files: web-ext-artifacts/*.xpi

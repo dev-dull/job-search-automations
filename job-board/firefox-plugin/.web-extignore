@@ -1,0 +1,6 @@
+# Files excluded from the packaged/signed .xpi (web-ext build/sign).
+README.md
+.web-extignore
+.gitignore
+dist/
+web-ext-artifacts/

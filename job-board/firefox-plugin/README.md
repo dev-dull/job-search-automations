@@ -22,6 +22,50 @@ The plugin holds no API key, no resume, and no scoring prompt. Server-side scori
 - **`popup.html` / `popup.js` / `popup.css`** The action popup. Handles the extract → POST → render flow, the cache notice, the watch bar, the Re-score button, the manual-paste fallback, and the "this is your job-store inbox" state.
 - **`options.html` / `options.js` / `options.css`** Settings page. Only setting is the backend URL. Localhost works out of the box; any other host triggers a one-time Firefox permission prompt the first time you click Save or Test.
 
+## Install from the job board (recommended)
+
+If the backend is serving a signed `.xpi`, the inbox page shows a **⤓ Install
+Firefox extension** link (top-right). Click it and confirm Firefox's prompt —
+that's it. The `.xpi` is Mozilla-signed (unlisted), so it installs on stock
+release Firefox with **no `about:config` changes** and persists across restarts.
+"Unlisted" just means it isn't in AMO's public catalog; only people using your
+job board ever see it.
+
+### Publishing a signed version (maintainer)
+
+Signing is automated by [`.github/workflows/sign-extension.yaml`](../../.github/workflows/sign-extension.yaml).
+
+**One-time setup:**
+1. Create a free [addons.mozilla.org](https://addons.mozilla.org/) developer
+   account and generate API credentials at
+   `https://addons.mozilla.org/developers/addon/api/key/`.
+2. Add them as repo secrets: `AMO_JWT_ISSUER` and `AMO_JWT_SECRET`.
+
+**Each release:**
+1. Bump `manifest.json` `version` (AMO refuses to re-sign an existing version).
+2. Publish a GitHub Release. The workflow runs `web-ext sign --channel=unlisted`
+   and **attaches the signed `.xpi` to the release**.
+3. Make the `.xpi` reachable by job-store: drop it in `EXTENSION_DIST_DIR`
+   (defaults to `firefox-plugin/dist/`; in the container image — which doesn't
+   ship `firefox-plugin/` — set `EXTENSION_DIST_DIR` to a mounted path). The
+   `/extension` route serves the newest `.xpi` there.
+
+**Local signing** (instead of CI), same result:
+
+```bash
+cd job-board/firefox-plugin
+npx web-ext sign --channel=unlisted \
+  --api-key=$AMO_JWT_ISSUER --api-secret=$AMO_JWT_SECRET \
+  --artifacts-dir=dist
+```
+
+**Auto-update** is wired but off by default: job-store serves
+`/extension/updates.json`, but Firefox only consults it if the *signed* xpi's
+`browser_specific_settings.gecko.update_url` points at one canonical HTTPS host.
+Since each operator self-hosts a different host, we don't bake a URL in — set it
+in your own build if you want background updates; otherwise users re-click
+Install to upgrade.
+
 ## Install (development)
 
 1. Open `about:debugging#/runtime/this-firefox` in Firefox.
@@ -32,7 +76,7 @@ The plugin holds no API key, no resume, and no scoring prompt. Server-side scori
 6. Click Save.
 7. Visit a job posting on any supported ATS and click the briefcase icon in the toolbar.
 
-Temporary add-ons are unloaded when Firefox restarts; re-pick the manifest each session. For a persistent install you'd need to sign with AMO; that's not covered here.
+Temporary add-ons are unloaded when Firefox restarts; re-pick the manifest each session. For a persistent install, use the signed flow above ([Install from the job board](#install-from-the-job-board-recommended)).
 
 ## Pointing at a hosted backend
 

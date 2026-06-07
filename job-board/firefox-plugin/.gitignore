@@ -1,0 +1,4 @@
+# Build/sign artifacts
+web-ext-artifacts/
+dist/
+*.xpi
