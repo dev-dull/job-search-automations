@@ -125,5 +125,18 @@ poller:
       cpu: 500m
       memory: 256Mi
 
+# Firefox extension hosting. When enabled, an initContainer fetches the signed
+# .xpi into a shared volume and job-store serves it at /extension, so the
+# deployed inbox shows the "Install Firefox extension" link. The image doesn't
+# ship the .xpi (it's a per-release artifact), hence the deploy-time fetch.
+extension:
+  enabled: false
+  # Full URL to the signed .xpi (wins when set). Otherwise built from repo +
+  # version as a GitHub Release asset named job-fit-scorer.xpi.
+  xpiUrl: ""
+  repo: dev-dull/job-search-automations
+  version: ""                      # release tag, e.g. v0.1.0
+  fetchImage: curlimages/curl:8.8.0
+
 nameOverride: ""
 fullnameOverride: ""

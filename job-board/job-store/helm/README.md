@@ -67,6 +67,9 @@ separate charts/issues, added incrementally:
 | `poller.scheduleSpec.timesPerDay` | `6` | used when `times` empty; evenly spaced |
 | `poller.args` | `["--max-new","50"]` | poller CLI args |
 | `poller.concurrencyPolicy` | `Forbid` | no overlapping poll runs |
+| `extension.enabled` | `false` | fetch + serve the signed Firefox `.xpi` at `/extension` |
+| `extension.xpiUrl` | `""` | full URL to the `.xpi` (wins over repo/version) |
+| `extension.repo` / `extension.version` | repo / `""` | builds the GitHub Release asset URL |
 
 ## Secrets
 
@@ -172,6 +175,31 @@ poller:
 - `timesPerDay: N` runs N times/day evenly spaced on the hour (6 → every 4h, the
   default; 24 → hourly). For exact control of minutes/times, use `times` or
   `schedule`.
+
+## Firefox extension hosting
+
+Off by default. When enabled, an **initContainer fetches the signed `.xpi`** (a
+per-release artifact, not in the image) into a shared `emptyDir`, and job-store
+serves it at `/extension` so the deployed inbox shows the install link. The
+fetch happens at deploy time because the image and the `.xpi` have independent
+release lifecycles — see [#44](https://github.com/dev-dull/job-search-automations/issues/44).
+
+```yaml
+extension:
+  enabled: true
+  version: v0.1.0     # GitHub Release tag; fetches the job-fit-scorer.xpi asset
+# or point at any URL directly:
+# extension:
+#   enabled: true
+#   xpiUrl: https://example.com/job-fit-scorer.xpi
+```
+
+- The download must be reachable from the cluster at pod start; a failed fetch
+  fails the pod loudly (initContainer `curl -f`).
+- `helm install` errors clearly if `extension.enabled: true` with neither
+  `xpiUrl` nor `version` set.
+- Air-gapped clusters (no egress) want a ConfigMap-`binaryData` variant instead —
+  tracked in #44.
 
 ## Hard constraints
 

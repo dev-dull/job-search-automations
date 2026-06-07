@@ -37,6 +37,14 @@ jobs:
             --source-dir=job-board/firefox-plugin \
             --artifacts-dir=web-ext-artifacts
 
+      - name: Add a stable-named copy
+        # A predictable asset name lets the Helm chart build the download URL
+        # from repo + version (extension.version) without knowing web-ext's
+        # versioned filename. Renaming a signed xpi is safe (signature is inside).
+        run: |
+          src=$(ls web-ext-artifacts/*.xpi | head -1)
+          cp "$src" web-ext-artifacts/job-fit-scorer.xpi
+
       - uses: actions/upload-artifact@v4
         with:
           name: signed-xpi
