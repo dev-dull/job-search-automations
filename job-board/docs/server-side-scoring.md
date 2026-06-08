@@ -1,8 +1,15 @@
 # Server-Side Scoring — Design Document
 
-**Status:** Proposed. No code written yet.
+> **Status: implemented.** This design shipped — server-side scoring is live, the
+> plugin and poller are thin HTTP clients, and `anthropic_client.py` owns the
+> resume/key/prompt/schema. Two things below have since changed: the resume is
+> read as **any text format** (not YAML-specifically), and the backend is **no
+> longer 127.0.0.1-only** — the Helm chart can expose it via Ingress + TLS (it
+> remains unauthenticated, so expose only on a trusted network). Kept for design
+> rationale; for current behavior see [`../job-store/README.md`](../job-store/README.md).
+
 **Author:** Alastair Drong + Claude
-**Date:** 2026-05-19
+**Date:** 2026-05-19 (implemented since)
 
 ## Goal
 
@@ -261,7 +268,9 @@ days it matters (laptop offline, on a plane, etc.) it salvages the workflow.
 - Building a web UI for editing the resume. Resume edits still happen via
   `git` and `resume_details.yaml`.
 - Multi-user support. This is a single-user tool.
-- Authentication on the backend. It's bound to `127.0.0.1` and remains so.
+- Authentication on the backend. (Still unauthenticated as of this writing — but
+  no longer strictly `127.0.0.1`-only; the Helm chart can expose it via Ingress +
+  TLS, so run it only on a trusted network until an auth layer lands.)
 
 ## Tradeoffs accepted
 

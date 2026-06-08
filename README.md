@@ -22,6 +22,57 @@ Both the plugin and the poller POST job descriptions to job-store without a fit 
 
 See [`job-board/README.md`](job-board/README.md) for the architecture diagram, configuration, and local-run instructions.
 
+## How it all works together
+
+Two independent surfaces. Here's how the pieces of each fit, and how a posting flows from discovery to application.
+
+### The Job Board at runtime
+
+`job-store` is the hub — a Flask + SQLite service that is the single source of truth for the resume, the Anthropic API key, the scoring prompt, and the schema. Two **producers** feed it job descriptions; neither ever holds the key:
+
+- **firefox-plugin** — as you browse, extracts the JD from the page and POSTs it.
+- **poller** — on a schedule, walks the `company_targets` table, pulls each company's openings from its ATS (Greenhouse / Ashby / Lever / Workday adapters), filters by title and location, and POSTs the survivors. It's a pure HTTP client of job-store (no DB access).
+
+For each posting that arrives without a `fit_score`, job-store calls Anthropic with the resume + prompt, persists the structured analysis, dedupes by `dedupe_key`, and ranks on read (`fit_score × age_decay × platform_factor`). You triage the ranked inbox at `/` — apply / dismiss / record outcome — and the poller's location and deny filters keep the noise down.
+
+```
+    browse a posting           on a schedule
+         │                          │
+    ┌────▼─────┐              ┌──────▼──────┐
+    │ firefox  │  POST        │   poller    │  POST
+    │ plugin   │  /jobs/score │  (CronJob)  │  /jobs/score
+    └────┬─────┘              └──────┬──────┘
+         │   (no fit_score in body)  │
+         └────────────┬──────────────┘
+                      ▼
+            ┌───────────────────────┐  score  ┌──────────────────┐
+     you ──►│      job-store        │────────►│  api.anthropic   │
+    (inbox  │  Flask + SQLite       │◄────────│  (resume + key   │
+     at /)  │  dedupe · rank · UI   │         │   live here)     │
+            │  serves signed .xpi   │         └──────────────────┘
+            │  at /extension        │
+            └───────────────────────┘
+```
+
+The plugin is also **distributed by** the job board: job-store serves a Mozilla-signed `.xpi` at `/extension`, so the inbox shows an "Install Firefox extension" link — no `about:debugging` needed.
+
+### Lifecycle: develop → build → deploy → operate
+
+1. **Develop locally.** `flask run` job-store, run `poller.py` against it, load the plugin as a temporary add-on. (See [`job-board/README.md`](job-board/README.md).)
+2. **Build the image.** On backend changes, CI builds `ghcr.io/dev-dull/job-store` and bakes in the current signed plugin `.xpi`.
+3. **Sign & distribute the plugin.** Push a `plugin-v*` tag → CI signs the extension via Mozilla AMO (unlisted, no review), publishes the `.xpi` to the floating `plugin-latest` release, and rebuilds the image with it baked in. (See [`job-board/firefox-plugin/README.md`](job-board/firefox-plugin/README.md).)
+4. **Deploy.** The Helm chart runs job-store on Kubernetes: Deployment + Service (single-writer SQLite → one replica, `Recreate`), a PVC for `jobs.db`, the API-key Secret, the resume (from the Secret or git-cloned via an init-container), optional Ingress + TLS, and the poller as a CronJob. (See [`job-board/job-store/helm/README.md`](job-board/job-store/helm/README.md).)
+5. **Operate.** Browse and the plugin scores live; the CronJob polls on its schedule; you triage in the inbox and install the plugin from it.
+
+### How the two surfaces relate
+
+Decoupled on purpose:
+
+- **Job Board** (Anthropic / Claude) does *discovery, scoring, triage* — "which open roles are worth my time?"
+- **GitHub Actions** (Google Gemini, below) do *per-application resume tailoring* at commit time, invoked by a separate resume-as-code repo — "make my resume sharp for this one role."
+
+The intended bridge is the inbox's "apply" action: cut a branch in the resume repo from a stored posting, which triggers the Gemini tailoring flow. Until that lands, use either surface on its own.
+
 ## GitHub Actions
 ### dev-dull/job-search-automations/gemini-qualified
 Uses the free tier of Google Gemini to compare a resume to a job description and ranks if the position is a good fit with a score between 1 and 100.

@@ -1,5 +1,14 @@
 # Job-search automation plan
 
+> **Status: historical planning document.** This is the original plan; the Job
+> Board has since shipped and evolved past some of the decisions below. Notably:
+> the poller is now a pure HTTP client (no shared DB) running as a Kubernetes
+> CronJob, not a homelab cron; job-store is containerized and deployed via a Helm
+> chart and can be exposed over Ingress + TLS (with an auth caveat), not strictly
+> local-only; the autonomous crawler and local-Gemma pre-filter were never built.
+> For how things actually work today, see the [root README](../../README.md#how-it-all-works-together)
+> and [`../README.md`](../README.md). Kept for design rationale.
+
 ## Goal
 
 Replace the manual "find a job → cut a branch → run the pipeline" loop with an automated discovery, scoring, and ranking system that surfaces the highest-fit, highest-likelihood-of-callback positions first. Once the user picks a position to apply to, hand off to the existing branch-per-job CI/CD pipeline (`process-resume.yaml` et al.) unchanged.
