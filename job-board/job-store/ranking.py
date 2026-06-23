@@ -1,28 +1,39 @@
 """
-Ranking math. See AUTOMATION_PLAN.md §Ranking for the source formula and the
-rationale behind each constant.
+Ranking math.
 
   rank_score = fit_score * age_decay(posted_at) * platform_factor(...)
+
+fit_score is the dominant signal by design. The other two factors are gentle
+modifiers, bounded so they can nudge ordering without flipping a clearly
+better-fit job below a worse one. (Previously the multipliers spanned 0.3-1.0
+and 0.5-1.5 - a ~10x swing that let a stale posting on a "bad" platform outrank
+a much better-fit fresh one, which is why rank drifted away from fit.)
 """
 
 from datetime import date
 
 
-# Tunable constants. See AUTOMATION_PLAN.md for rationale; expect to revisit
-# once ≥30 outcomes exist in the system.
-AGE_DECAY_DAYS = 45
-AGE_DECAY_FLOOR = 0.3
-UNKNOWN_AGE_FACTOR = 0.7
+# --- Age: a gentle freshness tiebreak --------------------------------------
+# No decay for the first AGE_GRACE_DAYS, then a shallow linear slide to a high
+# floor. Bounded to [AGE_DECAY_FLOOR, 1.0], so age reorders jobs only within
+# ~25% of each other on fit and never dominates it.
+AGE_GRACE_DAYS = 30
+AGE_DECAY_SPAN_DAYS = 90          # grace-end -> floor
+AGE_DECAY_FLOOR = 0.8
+UNKNOWN_AGE_FACTOR = 0.9          # no usable date: a small nudge, not a cliff
 
-PLATFORM_FACTOR_MIN = 0.5
-PLATFORM_FACTOR_MAX = 1.5
-
-# Bayesian smoothing prior — pretends every platform starts with 2 callbacks
-# out of 10 applications, dragging low-n platforms toward the global rate.
-SMOOTHING_PRIOR_CALLBACKS = 2
-SMOOTHING_PRIOR_APPLICATIONS = 10
-
-# Used when there is no historical data at all (empty store).
+# --- Platform: parked until there's enough outcome data --------------------
+# With few applications the per-platform callback rate is dominated by the
+# smoothing prior and is mostly noise, so platform_factor stays at a neutral 1.0
+# until the global application count crosses this threshold.
+MIN_OUTCOMES_FOR_PLATFORM_FACTOR = 30
+PLATFORM_FACTOR_MIN = 0.8
+PLATFORM_FACTOR_MAX = 1.25
+# Bayesian smoothing strength: a platform's rate is pulled toward the GLOBAL
+# rate (so an unknown platform scores a neutral 1.0) and converges to its own
+# rate as applications accumulate. (The old prior pulled toward a fixed 0.2,
+# which pegged every low-data platform to the max.)
+SMOOTHING_PRIOR_STRENGTH = 10
 DEFAULT_GLOBAL_CALLBACK_RATE = 0.10
 
 
@@ -42,33 +53,41 @@ def age_decay(posted_at):
     if parsed is None:
         return UNKNOWN_AGE_FACTOR
     days = (date.today() - parsed).days
-    if days < 0:
+    if days <= AGE_GRACE_DAYS:
         return 1.0
-    return max(AGE_DECAY_FLOOR, min(1.0, 1.0 - days / AGE_DECAY_DAYS))
+    over = days - AGE_GRACE_DAYS
+    decayed = 1.0 - (over / AGE_DECAY_SPAN_DAYS) * (1.0 - AGE_DECAY_FLOOR)
+    return max(AGE_DECAY_FLOOR, decayed)
 
 
 def platform_factor(platform_callbacks, platform_applied, global_callback_rate):
+    """Per-platform callback-rate modifier, smoothed toward the global rate.
+
+    An unknown platform returns ~1.0 (neutral). A platform with a clearly higher
+    or lower callback rate than average nudges within [MIN, MAX]. Only applied
+    once there are enough outcomes (gated in compute_rank_score).
+    """
     if global_callback_rate <= 0:
         global_callback_rate = DEFAULT_GLOBAL_CALLBACK_RATE
-    smoothed = (platform_callbacks + SMOOTHING_PRIOR_CALLBACKS) / (
-        platform_applied + SMOOTHING_PRIOR_APPLICATIONS
-    )
+    k = SMOOTHING_PRIOR_STRENGTH
+    smoothed = (platform_callbacks + k * global_callback_rate) / (platform_applied + k)
     raw = 0.5 + (smoothed / global_callback_rate) * 0.5
     return max(PLATFORM_FACTOR_MIN, min(PLATFORM_FACTOR_MAX, raw))
 
 
 def compute_rank_score(fit_score, posted_at, platform_stats, discovered_at=None):
     """
-    platform_stats = (platform_callbacks, platform_applied, global_callback_rate)
+    platform_stats = (platform_callbacks, platform_applied, global_callback_rate,
+                      global_applied)
 
-    Falls back to `discovered_at` when `posted_at` is missing — most plugin
-    POSTs and some Workday postings don't carry an explicit publish date, and
-    without a fallback those rows freeze at `UNKNOWN_AGE_FACTOR` forever
-    instead of aging out alongside everything else.
+    Falls back to `discovered_at` when `posted_at` is missing - most plugin POSTs
+    and some Workday postings don't carry an explicit publish date.
     """
     if fit_score is None:
         return None
-    p_cb, p_app, g_rate = platform_stats
+    p_cb, p_app, g_rate, g_applied = platform_stats
     decay = age_decay(posted_at) if posted_at else age_decay(discovered_at)
-    factor = platform_factor(p_cb, p_app, g_rate)
+    # Platform stats stay neutral until they're trustworthy (enough outcomes).
+    factor = (platform_factor(p_cb, p_app, g_rate)
+              if g_applied >= MIN_OUTCOMES_FOR_PLATFORM_FACTOR else 1.0)
     return round(fit_score * decay * factor, 2)

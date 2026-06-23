@@ -289,8 +289,9 @@ def upsert_outcome(job_id, *, referral=False, callback=False, callback_at=None,
 
 def get_platform_stats(ats_platform):
     """
-    Return (platform_callbacks, platform_applied, global_callback_rate).
-    Used by the ranker to compute platform_factor.
+    Return (platform_callbacks, platform_applied, global_callback_rate,
+    global_applied). Used by the ranker; global_applied gates whether
+    platform_factor is trusted yet (see ranking.MIN_OUTCOMES_FOR_PLATFORM_FACTOR).
     """
     with cursor() as conn:
         global_row = conn.execute(
@@ -319,7 +320,7 @@ def get_platform_stats(ats_platform):
     p_applied = plat_row["applied"] or 0
     p_callbacks = plat_row["cb"] or 0
     global_rate = (g_callbacks / g_applied) if g_applied else 0.0
-    return p_callbacks, p_applied, global_rate
+    return p_callbacks, p_applied, global_rate, g_applied
 
 
 def platform_stats_summary():
