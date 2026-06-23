@@ -170,6 +170,25 @@ def _post_score(backend: str, job: dict, target_name: str) -> tuple[bool, dict |
         return False, f"URL error: {e.reason}"
 
 
+def _exit_code(summaries: list[dict]) -> int:
+    """Exit 0 unless the run was *systemically* broken.
+
+    A single misconfigured or flaky ATS target (e.g. one that 404s) must NOT
+    fail the whole run: a non-zero exit makes Kubernetes mark the Job failed and
+    retry the entire ~minute-long poll, and it drowns the CronJob's failure
+    signal so a genuinely broken poller is indistinguishable from one bad target.
+    Per-posting errors (short JD, a single score POST failing) are logged but
+    non-fatal too.
+
+    Fail only when every target that has an adapter failed at the adapter level
+    (all ATS unreachable, network down, etc.). A dead backend already fails
+    earlier, when the initial /companies.json and /jobs/urls reads raise.
+    """
+    attempted = sum(1 for s in summaries if not s.get("skipped"))
+    adapter_failures = sum(1 for s in summaries if s.get("adapter_error"))
+    return 1 if attempted and adapter_failures == attempted else 0
+
+
 def poll_target(target: dict, *, backend: str, existing_urls: set[str],
                 dry_run: bool, max_new: int | None,
                 location_allowlist: list[str],
@@ -188,6 +207,7 @@ def poll_target(target: dict, *, backend: str, existing_urls: set[str],
         "out_of_region": 0,
         "scored": 0,
         "errors": 0,
+        "adapter_error": False,
         "skipped": 0,
         "stopped_at_seen": False,
         "max_new_reached": False,
@@ -208,7 +228,11 @@ def poll_target(target: dict, *, backend: str, existing_urls: set[str],
     try:
         jobs = adapter.list_jobs(identifier)
     except Exception as e:
+        # Adapter-level failure: this whole target couldn't be fetched (bad
+        # config, ATS down, 404). Flagged separately from per-posting errors so
+        # one broken target doesn't fail the whole run (see _exit_code).
         summary["errors"] = 1
+        summary["adapter_error"] = True
         summary["error_detail"].append(f"adapter error: {e}")
         return summary
 
@@ -386,7 +410,15 @@ def main(argv: list[str] | None = None) -> int:
         for s in summaries:
             for msg in s["error_detail"]:
                 print(f"  [{s['name']}] {msg}")
-    return 0 if total_errors == 0 else 1
+
+    code = _exit_code(summaries)
+    if code:
+        attempted = sum(1 for s in summaries if not s["skipped"])
+        print(f"\nFAIL: all {attempted} target(s) with an adapter errored "
+              f"(systemic failure).")
+    elif total_errors:
+        print("\n(partial errors above are non-fatal; the run succeeded)")
+    return code
 
 
 if __name__ == "__main__":
