@@ -58,6 +58,33 @@ class FitDominanceTest(unittest.TestCase):
                            ranking.compute_rank_score(50, _iso(0), PARKED))
 
 
+class DesirabilityBlendTest(unittest.TestCase):
+    def test_no_desirability_falls_back_to_fit(self):
+        with_none = ranking.compute_rank_score(60, _iso(0), PARKED)
+        explicit = ranking.compute_rank_score(60, _iso(0), PARKED,
+                                               desirability_score=None)
+        self.assertEqual(with_none, explicit)
+        self.assertEqual(with_none, 60.0)   # fresh, parked platform -> fit
+
+    def test_high_desire_lifts_a_modest_fit_job(self):
+        # A so-so fit you really want should rank above the same fit with no
+        # desirability signal.
+        wanted = ranking.compute_rank_score(40, _iso(0), PARKED, desirability_score=90)
+        plain = ranking.compute_rank_score(40, _iso(0), PARKED)
+        self.assertGreater(wanted, plain)
+
+    def test_low_desire_sinks_a_high_fit_job(self):
+        # Qualified but uninterested -> ranks below a balanced one.
+        unwanted = ranking.compute_rank_score(90, _iso(0), PARKED, desirability_score=20)
+        balanced = ranking.compute_rank_score(60, _iso(0), PARKED, desirability_score=60)
+        self.assertLess(unwanted, balanced)
+
+    def test_blend_is_the_configured_weight(self):
+        w = ranking.DESIRABILITY_WEIGHT
+        got = ranking.compute_rank_score(40, _iso(0), PARKED, desirability_score=80)
+        self.assertAlmostEqual(got, w * 80 + (1 - w) * 40, places=2)
+
+
 class PlatformFactorTest(unittest.TestCase):
     def test_parked_below_threshold(self):
         # With few outcomes, rank == fit * age_decay (factor == 1.0).

@@ -83,6 +83,28 @@ SYSTEM_INSTRUCTIONS = (
     "who can critically compare resumes to job descriptions to determine if a candidate is a fit for a role."
 )
 
+# Added to the schema/prompt only when the candidate has stated preferences
+# (PREFERENCES_PATH). desirability_score is the "do I WANT this" axis, distinct
+# from candidate_score's "am I a MATCH". See ranking.DESIRABILITY_WEIGHT.
+_DESIRABILITY_PROPERTIES: dict[str, Any] = {
+    "desirability_score": {
+        "type": "integer",
+        "description": "A score between 1 and 100 for how well this role matches the kind of work the candidate says they want (see their stated preferences), independent of whether they are qualified for it.",
+    },
+    "desirability_explanation": {
+        "type": "string",
+        "description": "A brief explanation of desirability_score, no longer than 150 words.",
+    },
+}
+
+
+def _schema_with_desirability() -> dict[str, Any]:
+    """FIT_SCHEMA plus the desirability fields (used when preferences exist)."""
+    s = json.loads(json.dumps(FIT_SCHEMA))      # deep copy
+    s["properties"].update(_DESIRABILITY_PROPERTIES)
+    s["required"] = s["required"] + ["desirability_score", "desirability_explanation"]
+    return s
+
 
 def _resume_path() -> Path:
     override = os.environ.get("RESUME_PATH")
@@ -114,6 +136,21 @@ def read_resume() -> dict[str, Any]:
     }
 
 
+def read_preferences() -> str | None:
+    """The candidate's stated job preferences (free text), or None if unset.
+
+    PREFERENCES_PATH is optional: without it, scoring behaves exactly as before
+    (no desirability axis). Read verbatim, any text format."""
+    path = os.environ.get("PREFERENCES_PATH")
+    if not path:
+        return None
+    p = Path(path).expanduser()
+    if not p.exists():
+        return None
+    text = p.read_text(encoding="utf-8").strip()
+    return text or None
+
+
 def _client() -> Anthropic:
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
@@ -125,7 +162,7 @@ def _client() -> Anthropic:
 
 def _format_user_message(*, description: str, url: str | None,
                          title: str | None, ats_platform: str | None,
-                         growth_keywords: str) -> str:
+                         growth_keywords: str, has_preferences: bool = False) -> str:
     description = (description or "")[:MAX_DESCRIPTION_CHARS]
     keywords_line = (
         f"- career_growth_score: a score between 1 and 100 for words in the "
@@ -135,9 +172,7 @@ def _format_user_message(*, description: str, url: str | None,
              "the job description that suggest meaningful career growth for "
              "a senior infrastructure / build-and-release engineer."
     )
-    instruction = "\n".join([
-        "Compare the resume and job description with the goal of helping the candidate tailor their resume for the position.",
-        "Provide a JSON formatted response containing the following key/value pairs:",
+    fields = [
         "- candidate_score: a score between 1 and 100 for how well the resume matches the job description.",
         keywords_line,
         "- candidate_explanation: an explanation of the score no longer than 250 words.",
@@ -145,6 +180,16 @@ def _format_user_message(*, description: str, url: str | None,
         "- candidate_strengths: a list of strengths in the resume that the candidate possesses.",
         "- job_description_score: a score between 1 and 100 for how well the job description is written.",
         "- job_company_name: from the job description, identify the company name.",
+    ]
+    if has_preferences:
+        fields += [
+            "- desirability_score: a score between 1 and 100 for how well this role matches the kind of work the candidate says they want (see <preferences> in the system context), independent of whether they are qualified for it.",
+            "- desirability_explanation: a brief explanation of desirability_score, no longer than 150 words.",
+        ]
+    instruction = "\n".join([
+        "Compare the resume and job description with the goal of helping the candidate tailor their resume for the position.",
+        "Provide a JSON formatted response containing the following key/value pairs:",
+        *fields,
         "",
         "The JSON should be valid, parsable, and contain no additional formatting or comments.",
     ])
@@ -171,7 +216,27 @@ def score_job(*, description: str, url: str | None = None,
         raise ValueError("description is empty or too short to score (< 100 chars).")
 
     resume = read_resume()["content"]
+    preferences = read_preferences()
     growth_keywords = os.environ.get("GROWTH_KEYWORDS", "").strip()
+
+    # Resume (and preferences, if any) go in cached system blocks — stable
+    # across calls, so prompt caching keeps per-scoring cost low.
+    system = [
+        {"type": "text", "text": SYSTEM_INSTRUCTIONS},
+        {
+            "type": "text",
+            "text": f"The candidate's resume is below.\n\n<resume>\n{resume}\n</resume>",
+            "cache_control": {"type": "ephemeral"},
+        },
+    ]
+    schema = FIT_SCHEMA
+    if preferences:
+        system.append({
+            "type": "text",
+            "text": f"The candidate's stated job preferences are below.\n\n<preferences>\n{preferences}\n</preferences>",
+            "cache_control": {"type": "ephemeral"},
+        })
+        schema = _schema_with_desirability()
 
     # output_config is the structured-outputs parameter; it's not in every
     # version of the SDK as a named kwarg, so route it via extra_body for
@@ -180,26 +245,20 @@ def score_job(*, description: str, url: str | None = None,
         model=MODEL,
         max_tokens=2048,
         temperature=0,
-        system=[
-            {"type": "text", "text": SYSTEM_INSTRUCTIONS},
-            {
-                "type": "text",
-                "text": f"The candidate's resume is below.\n\n<resume>\n{resume}\n</resume>",
-                "cache_control": {"type": "ephemeral"},
-            },
-        ],
+        system=system,
         messages=[
             {
                 "role": "user",
                 "content": _format_user_message(
                     description=description, url=url, title=title,
                     ats_platform=ats_platform, growth_keywords=growth_keywords,
+                    has_preferences=bool(preferences),
                 ),
             }
         ],
         extra_body={
             "output_config": {
-                "format": {"type": "json_schema", "schema": FIT_SCHEMA}
+                "format": {"type": "json_schema", "schema": schema}
             }
         },
     )

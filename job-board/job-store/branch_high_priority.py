@@ -133,6 +133,7 @@ def list_candidates(*, fit_min: float, rank_min: float) -> list[tuple[float, dic
         rank = ranking.compute_rank_score(
             d.get("fit_score"), d.get("posted_at"), platform_cache[ats],
             discovered_at=d.get("discovered_at"),
+            desirability_score=d.get("desirability_score"),
         )
         if rank is None or rank <= rank_min:
             continue

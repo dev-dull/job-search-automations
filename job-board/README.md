@@ -49,6 +49,7 @@ job-store reads these env vars:
 | `RESUME_PATH` | yes | absolute path to the resume file — any text format (YAML/JSON/Markdown/LaTeX/HTML), read verbatim (e.g. `~/wip/resume/resume_details.yaml`) |
 | `ANTHROPIC_MODEL` | no | defaults to `claude-haiku-4-5` |
 | `GROWTH_KEYWORDS` | no | comma-separated phrases the scorer rewards (career-growth signal) |
+| `PREFERENCES_PATH` | no | path to a free-text file describing the kind of work you want. Enables a separate **desirability** score ("do I want it", distinct from fit's "am I a match") that's blended into ranking. Read verbatim, any text format. Without it, scoring and ranking use fit alone. |
 | `JOBS_DB_PATH` | no | SQLite DB location; defaults next to the code (the container sets `/data/jobs.db`) |
 | `EXTENSION_DIST_DIR` | no | dir holding the signed Firefox `.xpi` served at `/extension`. Released images bake it in at `/app/extension`; local `flask run` defaults to `firefox-plugin/dist/` |
 

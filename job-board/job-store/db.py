@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     discovered_by TEXT,
     status TEXT NOT NULL DEFAULT 'discovered',
     fit_score REAL,
+    desirability_score REAL,
     analysis_json TEXT,
     rank_score REAL,
     applied_at TIMESTAMP,
@@ -90,6 +91,9 @@ def init_db():
     existing_cols = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()}
     if "dedupe_key" not in existing_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN dedupe_key TEXT")
+    # desirability_score (the "do I want it" axis) was added after fit_score.
+    if "desirability_score" not in existing_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN desirability_score REAL")
     # Either path (fresh DB or migrated DB) reaches here with the column
     # in place; create the index unconditionally.
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_dedupe_key ON jobs(dedupe_key)")
@@ -124,7 +128,7 @@ def cursor():
 # ---------------------------------------------------------------------------
 
 def upsert_job(*, url, company, title, description, ats_platform, posted_at,
-               discovered_by, fit_score, analysis_json):
+               discovered_by, fit_score, analysis_json, desirability_score=None):
     """
     Insert if the posting (by dedupe_key) is new; otherwise update fit/analysis
     fields without clobbering applied/branch/status. Returns the row id.
@@ -150,23 +154,26 @@ def upsert_job(*, url, company, title, description, ats_platform, posted_at,
                     posted_at = COALESCE(?, posted_at),
                     discovered_by = COALESCE(?, discovered_by),
                     fit_score = COALESCE(?, fit_score),
+                    desirability_score = COALESCE(?, desirability_score),
                     analysis_json = COALESCE(?, analysis_json),
                     dedupe_key = COALESCE(dedupe_key, ?)
                 WHERE id = ?
                 """,
                 (company, title, description, ats_platform, posted_at,
-                 discovered_by, fit_score, analysis_json, dk, existing["id"]),
+                 discovered_by, fit_score, desirability_score, analysis_json,
+                 dk, existing["id"]),
             )
             return existing["id"]
         cur = conn.execute(
             """
             INSERT INTO jobs (url, company, title, description, ats_platform,
-                              posted_at, discovered_by, fit_score, analysis_json,
+                              posted_at, discovered_by, fit_score,
+                              desirability_score, analysis_json,
                               status, dedupe_key)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'discovered', ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'discovered', ?)
             """,
             (url, company, title, description, ats_platform, posted_at,
-             discovered_by, fit_score, analysis_json, dk),
+             discovered_by, fit_score, desirability_score, analysis_json, dk),
         )
         return cur.lastrowid
 
@@ -352,8 +359,21 @@ def platform_stats_summary():
 def all_jobs_for_rerank():
     with cursor() as conn:
         return [dict(r) for r in conn.execute(
-            "SELECT id, fit_score, posted_at, discovered_at, ats_platform "
-            "FROM jobs WHERE fit_score IS NOT NULL"
+            "SELECT id, fit_score, desirability_score, posted_at, discovered_at, "
+            "ats_platform FROM jobs WHERE fit_score IS NOT NULL"
+        ).fetchall()]
+
+
+def top_open_missing_desirability(limit):
+    """Highest-fit open rows that have no desirability score yet — the ones most
+    worth re-scoring first when backfilling the desirability axis (rescore.py)."""
+    with cursor() as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT id, url, description, ats_platform, posted_at, discovered_at "
+            "FROM jobs WHERE status IN ('discovered', 'ranked') "
+            "AND fit_score IS NOT NULL AND desirability_score IS NULL "
+            "ORDER BY fit_score DESC LIMIT ?",
+            (limit,),
         ).fetchall()]
 
 

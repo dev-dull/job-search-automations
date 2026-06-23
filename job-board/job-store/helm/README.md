@@ -154,6 +154,27 @@ that `git -C /resume pull`s on a loop (a separate CronJob can't help — the
 > The example mounts the chart's internal `tmp` emptyDir for `$HOME`; if that
 > name ever changes, add your own tmp volume via `extraVolumes`.
 
+### Job preferences (desirability, optional)
+
+Set `PREFERENCES_PATH` to a free-text file describing the kind of work you want,
+and the scorer adds a separate **desirability** score blended into ranking
+(distinct from fit). It's plain config, not a secret — wire it with the generic
+passthroughs (no chart-specific values needed):
+
+```yaml
+extraVolumes:
+  - name: preferences
+    configMap: { name: job-store-preferences }   # kubectl create configmap … --from-file
+extraVolumeMounts:
+  - { name: preferences, mountPath: /etc/job-store/prefs, readOnly: true }
+extraEnv:
+  - { name: PREFERENCES_PATH, value: /etc/job-store/prefs/preferences.txt }
+```
+
+Existing rows scored before this was set rank on fit alone until re-scored;
+`rescore.py --limit N` (run in the pod) backfills the top-N highest-fit open rows
+with bounded Anthropic spend.
+
 ## Ingress + TLS
 
 Disabled by default. The Ingress is controller-agnostic — `className` and

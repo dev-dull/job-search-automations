@@ -36,6 +36,14 @@ PLATFORM_FACTOR_MAX = 1.25
 SMOOTHING_PRIOR_STRENGTH = 10
 DEFAULT_GLOBAL_CALLBACK_RATE = 0.10
 
+# --- Desirability vs fit ----------------------------------------------------
+# fit_score answers "is the candidate a MATCH"; desirability_score answers "does
+# the candidate WANT this" (from their stated preferences). When both exist,
+# rank blends them with this weight (0.5 = equal). Judgment-set for now; tune
+# against applied/dismissed history (step 3). When no desirability score exists
+# (no preferences configured, or a row not yet re-scored), rank uses fit alone.
+DESIRABILITY_WEIGHT = 0.5
+
 
 def _parse_date(d):
     if not d:
@@ -75,19 +83,25 @@ def platform_factor(platform_callbacks, platform_applied, global_callback_rate):
     return max(PLATFORM_FACTOR_MIN, min(PLATFORM_FACTOR_MAX, raw))
 
 
-def compute_rank_score(fit_score, posted_at, platform_stats, discovered_at=None):
+def compute_rank_score(fit_score, posted_at, platform_stats, discovered_at=None,
+                       desirability_score=None):
     """
     platform_stats = (platform_callbacks, platform_applied, global_callback_rate,
                       global_applied)
 
+    base = blend(fit_score, desirability_score) when both exist, else fit_score.
     Falls back to `discovered_at` when `posted_at` is missing - most plugin POSTs
     and some Workday postings don't carry an explicit publish date.
     """
     if fit_score is None:
         return None
     p_cb, p_app, g_rate, g_applied = platform_stats
+    base = fit_score
+    if desirability_score is not None:
+        w = DESIRABILITY_WEIGHT
+        base = w * desirability_score + (1.0 - w) * fit_score
     decay = age_decay(posted_at) if posted_at else age_decay(discovered_at)
     # Platform stats stay neutral until they're trustworthy (enough outcomes).
     factor = (platform_factor(p_cb, p_app, g_rate)
               if g_applied >= MIN_OUTCOMES_FOR_PLATFORM_FACTOR else 1.0)
-    return round(fit_score * decay * factor, 2)
+    return round(base * decay * factor, 2)

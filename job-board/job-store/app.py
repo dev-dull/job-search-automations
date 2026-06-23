@@ -208,6 +208,7 @@ def _with_live_rank(jobs):
             job.get("posted_at"),
             platform_cache[ats],
             discovered_at=job.get("discovered_at"),
+            desirability_score=job.get("desirability_score"),
         )
     return jobs
 
@@ -303,6 +304,7 @@ def score_job():
         live_rank = ranking.compute_rank_score(
             existing["fit_score"], existing.get("posted_at"), stats,
             discovered_at=existing.get("discovered_at"),
+            desirability_score=existing.get("desirability_score"),
         )
         return jsonify({
             "id": existing["id"],
@@ -348,6 +350,7 @@ def score_job():
             live_rank = ranking.compute_rank_score(
                 existing["fit_score"], existing.get("posted_at"), stats,
                 discovered_at=existing.get("discovered_at"),
+                desirability_score=existing.get("desirability_score"),
             )
             return jsonify({
                 "id": existing["id"],
@@ -381,6 +384,11 @@ def score_job():
         except Exception as err:
             return jsonify({"error": f"scoring failed: {err}"}), 502
 
+    # Desirability ("do I want it") — present only when preferences are
+    # configured and the row was scored server-side; None for legacy plugin
+    # analyses, which keeps ranking on fit alone.
+    desirability_score = analysis.get("desirability_score") if analysis else None
+
     job_id = db.upsert_job(
         url=url,
         company=company,
@@ -391,12 +399,14 @@ def score_job():
         discovered_by=payload.get("discovered_by", "plugin"),
         fit_score=fit_score,
         analysis_json=json.dumps(analysis) if analysis else None,
+        desirability_score=desirability_score,
     )
 
     rank = ranking.compute_rank_score(
         fit_score, posted_at,
         db.get_platform_stats(payload.get("ats_platform")),
         discovered_at=datetime.utcnow().isoformat(),
+        desirability_score=desirability_score,
     )
     new_status = "ranked" if fit_score is not None else "discovered"
     db.update_rank_score(job_id, rank, status=new_status)
@@ -600,6 +610,7 @@ def rerank_all():
             job["fit_score"], job["posted_at"],
             db.get_platform_stats(job["ats_platform"]),
             discovered_at=job.get("discovered_at"),
+            desirability_score=job.get("desirability_score"),
         )
         db.update_rank_score(job["id"], rank)
     return redirect(url_for("index"))
