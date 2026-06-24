@@ -140,6 +140,16 @@ def compute_dedupe_key(url):
         if m:
             return f"lever:{m.group(1).split('-')[0]}"
 
+    # Taleo (Oracle): the requisition is identified by the org + rid query
+    # params; everything else (cws, and source/src/gns inbound-link tracking)
+    # varies per link, so the same posting reached from LinkedIn vs direct
+    # collapses on these two.
+    if "taleo.net" in netloc:
+        org = (params.get("org", [None])[0] or "").lower()
+        rid = params.get("rid", [None])[0]
+        if org and rid:
+            return f"taleo:{org}:{rid}"
+
     # Fall through to canonical URL for non-Greenhouse/Ashby postings. Two
     # URLs that differ only in tracking params / trailing slash converge here.
     return canonicalize_url(url)

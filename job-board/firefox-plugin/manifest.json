@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Job Fit Scorer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Score job postings against your resume using Claude Haiku 4.5.",
   "browser_specific_settings": {
     "gecko": {
@@ -41,6 +41,7 @@
     "https://apply.workable.com/*",
     "https://jobs.gem.com/*",
     "https://*.ats.rippling.com/*",
-    "https://careers.ibm.com/*"
+    "https://careers.ibm.com/*",
+    "https://*.taleo.net/*"
   ]
 }

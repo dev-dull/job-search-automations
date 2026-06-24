@@ -17,6 +17,7 @@ const ATS_HOSTS = [
   ["gem.com", "gem"],
   ["rippling.com", "rippling"],
   ["careers.ibm.com", "ibm"],
+  ["taleo.net", "taleo"],
 ];
 
 // ---------------------------------------------------------------------------
@@ -41,6 +42,43 @@ document.getElementById("open-options").addEventListener("click", (e) => {
 function extractInPage() {
   const url = location.href;
   const hostname = location.hostname;
+
+  // schema.org JobPosting JSON-LD is the most reliable source when a page embeds
+  // it (Taleo and many careers sites do, for Google for Jobs). Prefer it for
+  // title + description over fragile DOM scraping, and grab company + date too.
+  const ld = (() => {
+    const clean = (s) => {
+      const d = document.createElement("div");
+      d.innerHTML = s || "";                       // decode entities + drop tags
+      return (d.textContent || "").replace(/\s+/g, " ").trim();
+    };
+    for (const el of document.querySelectorAll('script[type="application/ld+json"]')) {
+      let data;
+      try { data = JSON.parse(el.textContent); } catch { continue; }
+      const nodes = [];
+      const visit = (x) => {
+        if (!x || typeof x !== "object") return;
+        nodes.push(x);
+        if (Array.isArray(x["@graph"])) x["@graph"].forEach(visit);
+      };
+      (Array.isArray(data) ? data : [data]).forEach(visit);
+      const jp = nodes.find((n) => {
+        const t = n["@type"];
+        return Array.isArray(t) ? t.includes("JobPosting") : String(t) === "JobPosting";
+      });
+      if (jp) {
+        const org = jp.hiringOrganization;
+        return {
+          title: (jp.title || "").trim() || null,
+          description: clean(jp.description),
+          postedAt: (jp.datePosted || "").slice(0, 10) || null,
+          company: (org && (org.name || (typeof org === "string" ? org : null))) || null,
+        };
+      }
+    }
+    return null;
+  })();
+
   // Title extraction is ATS-specific-first, then generic fallback. Two known
   // traps the specific selectors avoid:
   //   - LinkedIn split-pane (`/jobs/collections/.../?currentJobId=N`) renders a
@@ -54,7 +92,7 @@ function extractInPage() {
     document.querySelector("[class*='jobs-unified-top-card__job-title']") ||  // LinkedIn
     document.querySelector("[data-automation-id='jobPostingHeader']") ||      // Workday
     document.querySelector("h1");
-  const title = (titleEl?.innerText || document.title || "").trim();
+  const title = (ld?.title || titleEl?.innerText || document.title || "").trim();
 
   // Two-tier extraction. Tier 1 is ATS-specific selectors known to wrap just
   // the description — if any match with substantial text we prefer them, since
@@ -144,7 +182,11 @@ function extractInPage() {
   }
   if (!main) ({ el: main, len: bestLen } = pickLongest(GENERIC));
   if (!main) ({ el: main } = pickLongest("div, section"));
-  const description = (main?.innerText || document.body.innerText || "").trim();
+  // Prefer the JSON-LD description when present and substantial: it's the clean
+  // full JD, free of page chrome (e.g. Taleo, whose DOM is a legacy frame mess).
+  const domDescription = (main?.innerText || document.body.innerText || "").trim();
+  const description =
+    (ld?.description && ld.description.length >= 200) ? ld.description : domDescription;
 
   // If this page embeds Greenhouse via their JS embed (`<script src=
   // "boards.greenhouse.io/embed/job_board/js?for=<token>">`), surface the
@@ -172,7 +214,8 @@ function extractInPage() {
     ashbyOrgSlug = "ashby";
   }
 
-  return { url, hostname, title, description, greenhouseBoardToken, ashbyOrgSlug };
+  return { url, hostname, title, description, posted_at: ld?.postedAt || null,
+           company: ld?.company || null, greenhouseBoardToken, ashbyOrgSlug };
 }
 
 function detectAts(hostname) {
@@ -288,6 +331,8 @@ async function scoreViaBackend({ backendUrl, job, force = false }) {
     title: job.title,
     description: job.description,
     ats_platform: job.ats,
+    posted_at: job.posted_at || null,   // from JSON-LD datePosted when available
+    company: job.company || null,       // backend falls back to job_company_name
     discovered_by: "plugin",
     // No fit_score / analysis — sending those would tell the backend to
     // persist as-is and skip Anthropic; we want it to score.

@@ -53,6 +53,13 @@ class DedupeKeyCollapseTest(unittest.TestCase):
             "https://jobs.lever.co/foo/abcdef12-3456-7890-abcd-ef1234567890/apply",
             "https://jobs.lever.co/foo/abcdef12-3456-7890-abcd-ef1234567890?lever-source=LinkedIn",
         ],
+        "taleo-costco": [
+            # org + rid identify the requisition; cws + source/src/gns are
+            # per-inbound-link noise that must not split the row.
+            "https://phf.tbe.taleo.net/phf02/ats/careers/v2/viewRequisition?org=COSTCO&cws=41&rid=10040&source=LinkedIn&src=LinkedIn&gns=LinkedIn",
+            "https://phf.tbe.taleo.net/phf02/ats/careers/v2/viewRequisition?org=COSTCO&cws=41&rid=10040",
+            "https://phf.tbe.taleo.net/phf02/ats/careers/v2/viewRequisition?org=COSTCO&rid=10040&cws=9",
+        ],
     }
 
     def test_each_group_collapses_to_one_key(self):
