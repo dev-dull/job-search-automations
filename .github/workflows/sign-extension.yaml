@@ -33,6 +33,24 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Inject self-hosted update_url (if configured)
+        # Optional auto-update: set the repo variable EXTENSION_UPDATE_URL to your
+        # canonical https://<host>/extension/updates.json and it's baked into the
+        # signed manifest here. Left out of the committed manifest on purpose —
+        # it's deployment-specific, not something the public repo should pin.
+        if: ${{ vars.EXTENSION_UPDATE_URL != '' }}
+        env:
+          UPDATE_URL: ${{ vars.EXTENSION_UPDATE_URL }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          p = "job-board/firefox-plugin/manifest.json"
+          m = json.load(open(p))
+          m.setdefault("browser_specific_settings", {}).setdefault("gecko", {})["update_url"] = os.environ["UPDATE_URL"]
+          json.dump(m, open(p, "w"), indent=2)
+          print("injected gecko.update_url =", os.environ["UPDATE_URL"])
+          PY
+
       - name: Sign (unlisted) via AMO
         run: |
           npx --yes web-ext@latest sign \

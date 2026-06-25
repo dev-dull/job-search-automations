@@ -15,7 +15,9 @@ import re
 from datetime import datetime, date, timedelta, timezone
 
 import glob
+import hashlib
 import os
+import zipfile
 
 from flask import (Flask, abort, jsonify, redirect, render_template, request,
                    send_file, url_for)
@@ -817,10 +819,13 @@ def _extension_xpi():
     return xpis[-1] if xpis else None
 
 
-def _plugin_manifest():
+def _xpi_manifest(xpi_path):
+    """version + gecko id read from inside the served .xpi. Works in the
+    container, which doesn't ship firefox-plugin/manifest.json, and is always
+    consistent with whatever .xpi is actually served."""
     try:
-        with open(os.path.join(_PLUGIN_DIR, "manifest.json")) as f:
-            return json.load(f)
+        with zipfile.ZipFile(xpi_path) as z:
+            return json.loads(z.read("manifest.json"))
     except Exception:
         return {}
 
@@ -838,17 +843,26 @@ def extension_download():
 
 @app.route("/extension/updates.json")
 def extension_updates():
-    """Firefox self-hosted update manifest. Only consulted when the signed xpi's
-    manifest sets gecko.update_url to this URL (see firefox-plugin/README.md)."""
-    manifest = _plugin_manifest()
+    """Firefox self-hosted update manifest, built from the served .xpi. Firefox
+    consults it only when the installed xpi's manifest sets gecko.update_url to
+    this endpoint (injected at sign time via EXTENSION_UPDATE_URL — see
+    firefox-plugin/README.md). update_hash lets Firefox verify the download."""
+    xpi = _extension_xpi()
+    if not xpi:
+        abort(404)
+    manifest = _xpi_manifest(xpi)
     version = manifest.get("version")
     gecko_id = (manifest.get("browser_specific_settings", {})
                 .get("gecko", {}).get("id"))
-    if not (version and gecko_id and _extension_xpi()):
+    if not (version and gecko_id):
         abort(404)
+    with open(xpi, "rb") as f:
+        sha = hashlib.sha256(f.read()).hexdigest()
+    base = request.host_url.rstrip("/")
     return jsonify({"addons": {gecko_id: {"updates": [
         {"version": version,
-         "update_link": request.host_url.rstrip("/") + "/extension"},
+         "update_link": f"{base}/extension",
+         "update_hash": f"sha256:{sha}"},
     ]}}})
 
 

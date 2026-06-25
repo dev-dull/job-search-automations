@@ -72,12 +72,28 @@ npx web-ext sign --channel=unlisted \
   --artifacts-dir=dist
 ```
 
-**Auto-update** is wired but off by default: job-store serves
-`/extension/updates.json`, but Firefox only consults it if the *signed* xpi's
-`browser_specific_settings.gecko.update_url` points at one canonical HTTPS host.
-Since each operator self-hosts a different host, we don't bake a URL in — set it
-in your own build if you want background updates; otherwise users re-click
-Install to upgrade.
+### Auto-update (optional)
+
+Off by default — the committed manifest has no `update_url`, because it's
+deployment-specific and the public repo shouldn't pin one host. To enable
+background updates ("check for updates" in `about:addons`), point the signed xpi
+at your own job-store:
+
+1. Set a repo **Actions variable** `EXTENSION_UPDATE_URL` to
+   `https://<your-host>/extension/updates.json` (Settings → Secrets and variables
+   → Actions → Variables). The sign workflow injects it into the manifest at sign
+   time only; the committed manifest stays clean.
+2. Cut a new signed release (bump `version`, push a `plugin-v*` tag).
+
+job-store serves `/extension/updates.json` (built from the baked-in xpi, with an
+`update_hash`) and `/extension` (the xpi itself), so once a future signed version
+is deployed, installed clients pick it up automatically.
+
+**Takes effect from the *next* release.** `update_url` lives in the *installed*
+xpi's manifest, so the version you install must already carry it. Set the
+variable, release that version, install it once; subsequent releases then
+auto-update. Versions signed before this was configured still need a manual
+re-install to upgrade.
 
 ## Install (development)
 
