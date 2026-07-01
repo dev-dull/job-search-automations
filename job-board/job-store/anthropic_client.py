@@ -89,11 +89,16 @@ SYSTEM_INSTRUCTIONS = (
 _DESIRABILITY_PROPERTIES: dict[str, Any] = {
     "desirability_score": {
         "type": "integer",
-        "description": "A score between 1 and 100 for how well this role matches the kind of work the candidate says they want (see their stated preferences), independent of whether they are qualified for it.",
+        "description": "A score between 1 and 100 for how well this role matches the kind of work the candidate says they want (see their stated preferences), independent of whether they are qualified for it. Weigh the candidate's sustainable-pace preferences heavily: lower the score for red-flag intensity signals and raise it for green-flag structural-rest signals.",
     },
     "desirability_explanation": {
         "type": "string",
-        "description": "A brief explanation of desirability_score, no longer than 150 words.",
+        "description": "A brief explanation of desirability_score, no longer than 150 words. Note any pace/sustainability factors that moved the score.",
+    },
+    "pace_signals": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Specific pace/sustainability tells found in the job description or company, each prefixed with 'RED: ' (intensity/grind signal) or 'GREEN: ' (sustainable-pace signal), per the candidate's sustainable-pace preferences. Empty array if none are present.",
     },
 }
 
@@ -102,7 +107,7 @@ def _schema_with_desirability() -> dict[str, Any]:
     """FIT_SCHEMA plus the desirability fields (used when preferences exist)."""
     s = json.loads(json.dumps(FIT_SCHEMA))      # deep copy
     s["properties"].update(_DESIRABILITY_PROPERTIES)
-    s["required"] = s["required"] + ["desirability_score", "desirability_explanation"]
+    s["required"] = s["required"] + ["desirability_score", "desirability_explanation", "pace_signals"]
     return s
 
 
@@ -183,8 +188,9 @@ def _format_user_message(*, description: str, url: str | None,
     ]
     if has_preferences:
         fields += [
-            "- desirability_score: a score between 1 and 100 for how well this role matches the kind of work the candidate says they want (see <preferences> in the system context), independent of whether they are qualified for it.",
-            "- desirability_explanation: a brief explanation of desirability_score, no longer than 150 words.",
+            "- desirability_score: a score between 1 and 100 for how well this role matches the kind of work the candidate says they want (see <preferences> in the system context), independent of whether they are qualified for it. Weigh the candidate's sustainable-pace preferences heavily: reduce the score for red-flag intensity signals (e.g. 'fast-paced', 'ship big things every week', on-call as a core duty, hypergrowth burn) and raise it for green-flag structural-rest signals (e.g. minimum/mandatory PTO, profitability, genuinely async/remote-first).",
+            "- desirability_explanation: a brief explanation of desirability_score, no longer than 150 words; note any pace/sustainability factors that moved the score.",
+            "- pace_signals: a list of the specific pace/sustainability tells from the posting, each prefixed with 'RED: ' or 'GREEN: ' per the candidate's sustainable-pace preferences; an empty list if none.",
         ]
     instruction = "\n".join([
         "Compare the resume and job description with the goal of helping the candidate tailor their resume for the position.",
