@@ -677,30 +677,46 @@ def create_company():
 
     ats_platform, identifier = detect_ats(careers_url)
 
-    # If the URL itself doesn't match a known ATS, fetch it and see if it
-    # *embeds* one. This catches the common case where a user pastes a
-    # wrapper page like https://www.company.com/careers/ that pulls in a
-    # Greenhouse board via the standard embed script.
+    # If the URL itself doesn't match a known ATS, try two probes:
+    #
+    # 1. Greenhouse custom domain (issue #43): boards served on a vanity host
+    #    (jobs.elastic.co) expose no greenhouse.io reference in the page at
+    #    all — the only signal is the gh_jid query param. Guess board tokens
+    #    from the domain and verify against the public board API; a verified
+    #    hit resolves to the canonical boards.greenhouse.io URL. Tried first
+    #    because it's cheap (≤2 API calls, no page fetch) and unambiguous.
+    # 2. Embedded ATS: fetch the page and look for a standard embed script
+    #    (company.com/careers wrapping a Greenhouse/Ashby/Lever board).
     if ats_platform == "other":
-        probe = probe_embedded_ats(careers_url)
-        if probe is not None:
-            resolved_url, _ = probe
-            ats_platform, identifier = detect_ats(resolved_url)
-            careers_url = resolved_url  # store the canonical URL
+        from adapters import greenhouse as _greenhouse
+        board = _greenhouse.resolve_board_from_url(careers_url)
+        if board is not None:
+            ats_platform = "greenhouse"
+            identifier = {"board": board}
+            careers_url = f"https://boards.greenhouse.io/{board}"
         else:
-            supported = ", ".join(SUPPORTED_ATSES)
-            return _render_companies(
-                add_error=(
-                    f"{careers_url} isn't on a supported ATS and doesn't embed one. "
-                    f"The poller only knows how to talk to {supported}. "
-                    f"Try a direct job-board URL — e.g., "
-                    f"https://boards.greenhouse.io/<board>, "
-                    f"https://jobs.ashbyhq.com/<org>, "
-                    f"https://jobs.lever.co/<company>, or "
-                    f"https://<tenant>.<region>.myworkdayjobs.com/<lang>/<site>."
-                ),
-                add_url=careers_url, add_name=name, status=400,
-            )
+            probe = probe_embedded_ats(careers_url)
+            if probe is not None:
+                resolved_url, _ = probe
+                ats_platform, identifier = detect_ats(resolved_url)
+                careers_url = resolved_url  # store the canonical URL
+
+    if ats_platform == "other":
+        supported = ", ".join(SUPPORTED_ATSES)
+        return _render_companies(
+            add_error=(
+                f"{careers_url} isn't on a supported ATS and doesn't embed one. "
+                f"The poller only knows how to talk to {supported}. "
+                f"Try a direct job-board URL — e.g., "
+                f"https://boards.greenhouse.io/<board>, "
+                f"https://jobs.ashbyhq.com/<org>, "
+                f"https://jobs.lever.co/<company>, or "
+                f"https://<tenant>.<region>.myworkdayjobs.com/<lang>/<site> — "
+                f"or, for a Greenhouse board on a custom domain, a posting link "
+                f"that carries gh_jid."
+            ),
+            add_url=careers_url, add_name=name, status=400,
+        )
 
     # Workday: verify the parsed identifier against the live CXS API before
     # saving. A pasted job-detail URL like …/<site>/job would otherwise be

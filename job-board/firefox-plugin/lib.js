@@ -163,6 +163,13 @@ function deriveCareersUrl(rawUrl) {
   if (host.endsWith(".myworkdayjobs.com") && segs.length >= 2) {
     return `https://${host}/${segs[0]}/${segs[1]}`;
   }
+  // Greenhouse on a custom domain (jobs.elastic.co): the host is unknown but
+  // the gh_jid param is an unambiguous Greenhouse signal. Send the page URL
+  // as-is — the backend guesses the board token from the domain and VERIFIES
+  // it against the board API before creating the target (issue #43).
+  if (u.searchParams.get("gh_jid")) {
+    return rawUrl;
+  }
   return null;
 }
 

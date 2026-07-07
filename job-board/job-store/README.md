@@ -98,7 +98,10 @@ Form-encoded. `apply` records the resume-repo branch name; `dismiss` closes the 
 
 ### `/companies` `/companies/<id>` `/companies.json`
 
-Companies UI + JSON read. POST `/companies` accepts a careers URL; if it isn't on a supported ATS, the backend fetches it and looks for an embedded Greenhouse/Ashby/Lever/Workday board. Workday URLs (careers page, job-detail link, or bare tenant host) are resolved to `{host, lang?, site}` and **verified against the live CXS API before saving** — an unresolvable site is rejected with a 422 instead of creating a target that 404s on every poll.
+Companies UI + JSON read. POST `/companies` accepts a careers URL; if it isn't on a supported ATS, the backend fetches it and looks for an embedded Greenhouse/Ashby/Lever/Workday board. Two probe-at-create checks keep bad targets out:
+
+- **Workday** URLs (careers page, job-detail link, or bare tenant host) are resolved to `{host, lang?, site}` and **verified against the live CXS API before saving** — an unresolvable site is rejected with a 422 instead of creating a target that 404s on every poll.
+- **Greenhouse custom domains** (e.g. `jobs.elastic.co`) expose no board token in the page; paste a posting link carrying `gh_jid` and the backend guesses candidate tokens from the domain, **verifies the specific posting exists on that board**, and stores the canonical `boards.greenhouse.io/<board>` target. A wrong guess (or a closed posting) fails closed.
 
 ### `GET /resume`
 
