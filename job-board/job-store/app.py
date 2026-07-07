@@ -49,11 +49,25 @@ def _workday_extract(m):
     return {"host": m.group("host"), "site": first}
 
 
+def _greenhouse_extract(m):
+    """First path segment is the board token — except on embed URLs, where the
+    segment is the literal 'embed' and the real token lives in the `for` query
+    param (issue #52: the old regex saved board='embed', a target that 404s on
+    every poll). `for`-less embed URLs (job_app iframes) decline detection so
+    the URL falls through to the other probes / a clear error."""
+    token = m.group(1)
+    if token == "embed":
+        from adapters.greenhouse import board_from_embed_url
+        board = board_from_embed_url(m.string)
+        return {"board": board} if board else None
+    return {"board": token}
+
+
 ATS_DETECTORS = [
     (
-        re.compile(r"(?:job-)?boards\.greenhouse\.io/(?:embed/job_board/[^/?#]+/jobs\?for=)?([^/?#]+)"),
+        re.compile(r"(?:job-)?boards\.greenhouse\.io/([^/?#]+)"),
         "greenhouse",
-        lambda m: {"board": m.group(1)},
+        _greenhouse_extract,
     ),
     (re.compile(r"jobs\.lever\.co/([^/?#]+)"), "lever",
      lambda m: {"company": m.group(1)}),
@@ -69,11 +83,15 @@ ATS_DETECTORS = [
 
 
 def detect_ats(careers_url):
-    """Return (ats_platform, identifier_dict). Falls back to ('other', {})."""
+    """Return (ats_platform, identifier_dict). Falls back to ('other', {}).
+    An extractor may return None to decline a match (e.g. a greenhouse embed
+    URL with no resolvable board token), letting the URL fall through."""
     for pattern, platform, extractor in ATS_DETECTORS:
         m = pattern.search(careers_url)
         if m:
-            return platform, extractor(m)
+            identifier = extractor(m)
+            if identifier is not None:
+                return platform, identifier
     return "other", {}
 
 
@@ -736,6 +754,26 @@ def create_company():
             ),
             add_url=careers_url, add_name=name, status=400,
         )
+
+    # Greenhouse: verify the board token against the public API before saving —
+    # a mis-parsed token would create a target that 404s on every poll (#52,
+    # same class as the June Workday incident). Cheap board-meta GET; also
+    # yields the proper company name for the name default.
+    if ats_platform == "greenhouse":
+        from adapters import greenhouse as _gh
+        board_name = _gh.verify_board_exists((identifier or {}).get("board"))
+        if board_name is None:
+            return _render_companies(
+                add_error=(
+                    f"Couldn't verify Greenhouse board "
+                    f"{(identifier or {}).get('board')!r} from {careers_url} "
+                    f"against the public board API. Paste the board URL "
+                    f"(https://boards.greenhouse.io/<board>) or a posting link."
+                ),
+                add_url=careers_url, add_name=name, status=422,
+            )
+        if not name and board_name:
+            name = board_name
 
     # Workday: verify the parsed identifier against the live CXS API before
     # saving. A pasted job-detail URL like …/<site>/job would otherwise be

@@ -48,6 +48,28 @@ class BoardCandidatesTest(unittest.TestCase):
         self.assertEqual(greenhouse.board_candidates(""), [])
 
 
+class BoardFromEmbedUrlTest(unittest.TestCase):
+    """Issue #52: embed URLs carry the board in `for`, not the path."""
+
+    def test_job_board_embed(self):
+        self.assertEqual(greenhouse.board_from_embed_url(
+            "https://boards.greenhouse.io/embed/job_board?for=acme"), "acme")
+
+    def test_js_embed_form(self):
+        self.assertEqual(greenhouse.board_from_embed_url(
+            "https://boards.greenhouse.io/embed/job_board/js?for=acme&b=x"), "acme")
+
+    def test_job_app_token_has_no_board(self):
+        # application iframe: token is a posting id, not a board — no token.
+        self.assertIsNone(greenhouse.board_from_embed_url(
+            "https://boards.greenhouse.io/embed/job_app?token=4689145005"))
+
+    def test_no_query(self):
+        self.assertIsNone(greenhouse.board_from_embed_url(
+            "https://boards.greenhouse.io/embed/job_board"))
+        self.assertIsNone(greenhouse.board_from_embed_url(""))
+
+
 class ResolveBoardTest(unittest.TestCase):
     def test_elastic_url_resolves(self):
         got = greenhouse.resolve_board_from_url(ELASTIC_URL,

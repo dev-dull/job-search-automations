@@ -20,6 +20,7 @@ from typing import Any
 
 BOARDS_API = "https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true"
 BOARDS_API_JOB = "https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{jid}"
+BOARDS_API_META = "https://boards-api.greenhouse.io/v1/boards/{board}"
 TIMEOUT_SEC = 20
 
 # Strip HTML tags from the Greenhouse `content` field. Greenhouse hosts JDs as
@@ -90,6 +91,37 @@ def verify_board(board: str, gh_jid: str) -> bool:
             return json.load(resp).get("id") is not None
     except Exception:
         return False
+
+
+def board_from_embed_url(url: str) -> str | None:
+    """Board token from a greenhouse-hosted embed URL's `for` param.
+
+    Embed URLs (`boards.greenhouse.io/embed/job_board?for=<token>` and the
+    `/js?for=` script form) carry the token in the query string, not the path —
+    naive path parsing yields the bogus board 'embed' (issue #52). Returns None
+    when there's no `for` param (e.g. `/embed/job_app?token=<jid>`, which
+    identifies a posting, not a board)."""
+    try:
+        q = urllib.parse.parse_qs(urllib.parse.urlsplit(url or "").query)
+    except ValueError:
+        return None
+    tok = (q.get("for", [None])[0] or "").strip()
+    return tok or None
+
+
+def verify_board_exists(board: str) -> str | None:
+    """The board's company name if the token resolves on the public API, else
+    None. Used by verify-at-create so a mis-parsed token (like 'embed') is
+    rejected instead of saved as a target that 404s on every poll."""
+    if not board:
+        return None
+    url = BOARDS_API_META.format(board=urllib.parse.quote(board, safe=""))
+    req = urllib.request.Request(url, headers={"User-Agent": "job-store-poller/0.1"})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_SEC) as resp:
+            return json.load(resp).get("name") or board
+    except Exception:
+        return None
 
 
 def resolve_board_from_url(careers_url: str, *, verify=None) -> str | None:

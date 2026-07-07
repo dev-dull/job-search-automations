@@ -146,7 +146,14 @@ function deriveCareersUrl(rawUrl) {
   const segs = u.pathname.split("/").filter(Boolean);
 
   // Greenhouse: boards.greenhouse.io/<board>/... or job-boards.greenhouse.io/<board>/...
+  // Embed URLs carry the board in the `for` query param, not the path — the
+  // path segment is the literal "embed" and must not be treated as a board
+  // token (issue #52). `for`-less embed URLs (job_app iframes) derive nothing.
   if (host.endsWith("greenhouse.io") && segs.length >= 1) {
+    if (segs[0] === "embed") {
+      const board = u.searchParams.get("for");
+      return board ? `https://boards.greenhouse.io/${board}` : null;
+    }
     return `https://boards.greenhouse.io/${segs[0]}`;
   }
   // Ashby: jobs.ashbyhq.com/<org>/...
