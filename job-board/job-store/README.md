@@ -98,7 +98,7 @@ Form-encoded. `apply` records the resume-repo branch name; `dismiss` closes the 
 
 ### `/companies` `/companies/<id>` `/companies.json`
 
-Companies UI + JSON read. POST `/companies` accepts a careers URL; if it isn't on a supported ATS, the backend fetches it and looks for an embedded Greenhouse/Ashby/Lever/Workday board.
+Companies UI + JSON read. POST `/companies` accepts a careers URL; if it isn't on a supported ATS, the backend fetches it and looks for an embedded Greenhouse/Ashby/Lever/Workday board. Workday URLs (careers page, job-detail link, or bare tenant host) are resolved to `{host, lang?, site}` and **verified against the live CXS API before saving** — an unresolvable site is rejected with a 422 instead of creating a target that 404s on every poll.
 
 ### `GET /resume`
 

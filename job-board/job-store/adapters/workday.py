@@ -85,6 +85,106 @@ def _detail_url(host: str, site: str, external_path: str) -> str:
     return f"https://{host}/wday/cxs/{tenant}/{urllib.parse.quote(site, safe='')}/job{external_path}"
 
 
+# ---------------------------------------------------------------------------
+# Probe-at-create: resolve + VERIFY an identifier from any pasted Workday URL.
+#
+# The naive parse ("first path segment = lang, second = site") is wrong for
+# job-detail URLs: /<site>/job parses as lang=<site>, site='job', which the
+# backend used to save as-is — producing a target that 404s on every poll
+# (the June poller incident). These helpers generate both plausible parses and
+# check them against the live CXS jobs endpoint before anything is saved.
+# ---------------------------------------------------------------------------
+
+# Locale segments look like "en", "en-US", "fr-CA" — used only to ORDER the
+# candidates (which parse to try first), never to hard-reject a shape.
+_LOCALE_RE = re.compile(r"^[a-z]{2}(?:-[A-Z]{2})?$")
+
+HOST_RE = re.compile(r"([a-z0-9-]+\.[a-z0-9-]+\.myworkdayjobs\.com)")
+
+
+def site_candidates(host: str, segments: list[str]) -> list[dict[str, Any]]:
+    """Ordered candidate identifiers for a Workday URL path.
+
+    Two site URL shapes exist (see app.py's detector): /<lang>/<site> and
+    /<site>. Both are generated from the first one or two path segments; a
+    locale-looking first segment just decides which to try first."""
+    out: list[dict[str, Any]] = []
+
+    def add(c):
+        if c not in out:
+            out.append(c)
+
+    if len(segments) >= 2:
+        two = {"host": host, "lang": segments[0], "site": segments[1]}
+        one = {"host": host, "site": segments[0]}
+        if _LOCALE_RE.match(segments[0]):
+            add(two)
+            add(one)
+        else:
+            add(one)
+            add(two)
+    elif len(segments) == 1:
+        add({"host": host, "site": segments[0]})
+    return out
+
+
+def verify_site(identifier: dict[str, Any]) -> bool:
+    """True if the identifier resolves to a live CXS jobs endpoint (cheap
+    limit-1 list call). A misparsed site 404s here instead of after save."""
+    host = (identifier or {}).get("host")
+    site = (identifier or {}).get("site")
+    if not host or not site:
+        return False
+    tenant = _tenant(host)
+    url = f"https://{host}/wday/cxs/{tenant}/{urllib.parse.quote(site, safe='')}/jobs"
+    try:
+        page = _http_json(url, method="POST", body={
+            "appliedFacets": {}, "limit": 1, "offset": 0, "searchText": "",
+        })
+    except Exception:
+        return False
+    return isinstance(page.get("jobPostings"), list)
+
+
+def _root_landing_path(host: str, timeout: int = 8) -> str | None:
+    """Path the tenant root redirects to (usually /<lang>/<site>), for bare
+    host URLs pasted with no path at all."""
+    req = urllib.request.Request(
+        f"https://{host}/",
+        headers={"User-Agent": "Mozilla/5.0 (compatible; job-store/0.1)"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return urllib.parse.urlsplit(resp.geturl()).path
+    except Exception:
+        return None
+
+
+def resolve_identifier(careers_url: str, *, verify=None,
+                       fetch_landing_path=None) -> dict[str, Any] | None:
+    """Resolve a VERIFIED {host, lang?, site} identifier from any pasted
+    Workday URL (careers page, job-detail link, or bare tenant host).
+    Returns None when the URL isn't Workday or no candidate site verifies.
+
+    `verify` / `fetch_landing_path` are injectable for tests; at most
+    len(candidates) (≤2) verification calls plus one optional root fetch."""
+    verify = verify or verify_site
+    fetch_landing_path = fetch_landing_path or _root_landing_path
+    m = HOST_RE.search(careers_url or "")
+    if not m:
+        return None
+    host = m.group(1)
+    path = urllib.parse.urlsplit(careers_url).path
+    segments = [s for s in path.split("/") if s]
+    if not segments:
+        landing = fetch_landing_path(host)
+        segments = [s for s in (landing or "").split("/") if s]
+    for cand in site_candidates(host, segments):
+        if verify(cand):
+            return cand
+    return None
+
+
 def list_jobs(identifier: dict[str, Any]) -> list[dict[str, Any]]:
     """Return postings newest-first as lightweight stubs (no description).
 

@@ -702,6 +702,28 @@ def create_company():
                 add_url=careers_url, add_name=name, status=400,
             )
 
+    # Workday: verify the parsed identifier against the live CXS API before
+    # saving. A pasted job-detail URL like …/<site>/job would otherwise be
+    # misparsed (site='job') and 404 on every poll — exactly the broken
+    # duplicate target behind the June poller retry storm.
+    if ats_platform == "workday":
+        from adapters import workday as _workday
+        resolved = _workday.resolve_identifier(careers_url)
+        if resolved is None:
+            return _render_companies(
+                add_error=(
+                    f"Couldn't resolve a live Workday career site from "
+                    f"{careers_url}. Paste the careers-page URL, e.g. "
+                    f"https://<tenant>.<shard>.myworkdayjobs.com/<lang>/<site>."
+                ),
+                add_url=careers_url, add_name=name, status=422,
+            )
+        identifier = resolved
+        # Store the canonical careers URL for the verified site, not the pasted
+        # deep link — keeps the row readable and collapses obvious duplicates.
+        segs = [resolved.get("lang"), resolved["site"]]
+        careers_url = f"https://{resolved['host']}/" + "/".join(s for s in segs if s)
+
     if not name:
         name = _infer_name_from_identifier(careers_url, ats_platform, identifier)
     try:
