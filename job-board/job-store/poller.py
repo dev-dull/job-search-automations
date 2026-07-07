@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -120,6 +121,22 @@ def _load_location_lists(backend: str) -> tuple[list[str], list[str]]:
     )
 
 
+def _phrase_matches(phrase_low: str, text_low: str) -> bool:
+    """Location-phrase match with a leading boundary.
+
+    Bare substring matching let allowlist code tokens bleed across word edges:
+    "US-" matched "AUS-Sydney" (and "US," matched "AUS, NSW…"), allowing
+    out-of-region postings before the denylist was even consulted (issue #53).
+    Phrases that start with an alphanumeric must now begin at a word edge —
+    "US-CA-Santa-Clara" still matches, "AUS-Sydney" doesn't. Phrases that
+    start with punctuation/space (" UK ", "| UK") self-anchor and keep plain
+    substring semantics.
+    """
+    if phrase_low and phrase_low[0].isalnum():
+        return re.search(r"(?<![a-z0-9])" + re.escape(phrase_low), text_low) is not None
+    return phrase_low in text_low
+
+
 def _location_allowed(loc: str, allowlist: list[str], denylist: list[str]) -> str | None:
     """Return None if allowed; otherwise return a human-readable reason.
 
@@ -136,10 +153,10 @@ def _location_allowed(loc: str, allowlist: list[str], denylist: list[str]) -> st
         return None
     low = loc.lower()
     for p in allowlist or []:
-        if p and p.lower() in low:
+        if p and _phrase_matches(p.lower(), low):
             return None
     for p in denylist or []:
-        if p and p.lower() in low:
+        if p and _phrase_matches(p.lower(), low):
             return f"deny:{p!r}"
     return None
 
