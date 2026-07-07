@@ -53,5 +53,8 @@ USER appuser
 EXPOSE 5000
 
 # Single worker: SQLite tolerates exactly one writer; WAL mode handles read
-# concurrency within the process. Do not scale workers without moving off SQLite.
-ENTRYPOINT ["gunicorn", "-w", "1", "-b", "0.0.0.0:5000", "app:app"]
+# concurrency within the process. Do not scale workers without moving off
+# SQLite. Threads (gthread) keep health probes and badge lookups responsive
+# while a 5-10s Anthropic scoring call is in flight — without them, kubelet's
+# liveness probe starves behind the busy sync worker and kills the pod (#50).
+ENTRYPOINT ["gunicorn", "-w", "1", "--threads", "4", "-b", "0.0.0.0:5000", "app:app"]

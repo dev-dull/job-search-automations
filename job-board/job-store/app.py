@@ -229,6 +229,20 @@ def _generate_branch_name(job):
 # Routes — UI
 # ---------------------------------------------------------------------------
 
+@app.route("/healthz")
+def healthz():
+    """Cheap probe target for Kubernetes liveness/readiness.
+
+    Deliberately NOT `/`: the inbox re-ranks every open row per request
+    (~0.75s at 1k rows and growing), and behind a single worker any in-flight
+    Anthropic scoring call (5-10s) head-of-line blocks the probe — kubelet's
+    1s timeout then kills the pod mid-poll (issue #50). This endpoint touches
+    the DB trivially and returns immediately."""
+    with db.cursor() as conn:
+        conn.execute("SELECT 1").fetchone()
+    return jsonify({"ok": True})
+
+
 @app.route("/")
 def index():
     status = request.args.get("status", "open")
@@ -411,12 +425,17 @@ def score_job():
         desirability_score=desirability_score,
     )
     new_status = "ranked" if fit_score is not None else "discovered"
+    # update_rank_score only applies the status to discovered/ranked rows —
+    # an applied/closed row keeps its workflow state on re-score (#51). Report
+    # the row's actual status, which may therefore differ from new_status.
     db.update_rank_score(job_id, rank, status=new_status)
+    _row = db.get_job(job_id)
+    actual_status = _row["status"] if _row else new_status
 
     response_body = {
         "id": job_id,
         "rank_score": rank,
-        "status": new_status,
+        "status": actual_status,
         "fit_score": fit_score,
         "company": company,
         "analysis": analysis,
