@@ -226,10 +226,20 @@ def update_status(job_id, status):
 
 
 def update_rank_score(job_id, rank_score, status=None):
+    """Update rank (and optionally status). The status write only applies to
+    rows still in the discovery pipeline (discovered/ranked): a re-score of a
+    job the user already acted on must never demote `applied` back to `ranked`
+    or resurrect a dismissed `closed` row (issue #51) — those transitions
+    belong to the apply/dismiss/outcome routes, not the scorer."""
     with cursor() as conn:
         if status is not None:
             conn.execute(
-                "UPDATE jobs SET rank_score = ?, status = ? WHERE id = ?",
+                """
+                UPDATE jobs SET rank_score = ?,
+                    status = CASE WHEN status IN ('discovered', 'ranked')
+                                  THEN ? ELSE status END
+                WHERE id = ?
+                """,
                 (rank_score, status, job_id),
             )
         else:
