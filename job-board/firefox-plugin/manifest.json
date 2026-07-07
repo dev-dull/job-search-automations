@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Job Fit Scorer",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Score job postings against your resume using Claude Haiku 4.5.",
   "browser_specific_settings": {
     "gecko": {
@@ -10,7 +10,10 @@
     }
   },
   "background": {
-    "scripts": ["lib.js", "background.js"]
+    "scripts": [
+      "lib.js",
+      "background.js"
+    ]
   },
   "action": {
     "default_popup": "popup.html",
