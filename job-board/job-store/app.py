@@ -73,6 +73,10 @@ ATS_DETECTORS = [
      lambda m: {"company": m.group(1)}),
     (re.compile(r"jobs\.ashbyhq\.com/([^/?#]+)"), "ashby",
      lambda m: {"org": m.group(1)}),
+    # ats.rippling.com/<slug>/jobs[/<uuid>] — first path segment is the board
+    # slug (verified against the public board API at create time).
+    (re.compile(r"ats\.rippling\.com/([^/?#]+)"), "rippling",
+     lambda m: {"slug": m.group(1)}),
     (re.compile(
         r"(?P<host>[a-z0-9-]+\.[a-z0-9-]+\.myworkdayjobs\.com)"
         r"/(?P<first>[^/?#]+)(?:/(?P<second>[^/?#]+))?"
@@ -694,7 +698,7 @@ def _render_companies(add_error=None, add_url="", add_name="", status=200):
     )
 
 
-SUPPORTED_ATSES = ("Greenhouse", "Ashby", "Lever", "Workday")
+SUPPORTED_ATSES = ("Greenhouse", "Ashby", "Lever", "Rippling", "Workday")
 
 
 @app.route("/companies", methods=["GET"])
@@ -774,6 +778,22 @@ def create_company():
             )
         if not name and board_name:
             name = board_name
+
+    # Rippling: verify the board slug on the public API before saving; store
+    # the canonical board URL rather than a pasted job-detail link (#22).
+    if ats_platform == "rippling":
+        from adapters import rippling as _rippling
+        slug = (identifier or {}).get("slug")
+        if not _rippling.verify_board(slug):
+            return _render_companies(
+                add_error=(
+                    f"Couldn't verify Rippling board {slug!r} from {careers_url} "
+                    f"against the public board API. Paste the board URL "
+                    f"(https://ats.rippling.com/<slug>/jobs) or a posting link."
+                ),
+                add_url=careers_url, add_name=name, status=422,
+            )
+        careers_url = f"https://ats.rippling.com/{slug}/jobs"
 
     # Workday: verify the parsed identifier against the live CXS API before
     # saving. A pasted job-detail URL like …/<site>/job would otherwise be

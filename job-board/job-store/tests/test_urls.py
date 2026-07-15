@@ -53,6 +53,12 @@ class DedupeKeyCollapseTest(unittest.TestCase):
             "https://jobs.lever.co/foo/abcdef12-3456-7890-abcd-ef1234567890/apply",
             "https://jobs.lever.co/foo/abcdef12-3456-7890-abcd-ef1234567890?lever-source=LinkedIn",
         ],
+        "rippling-button": [
+            # jobSite/src are inbound-link tracking; param order irrelevant.
+            "https://ats.rippling.com/button/jobs/6673232b-93a2-4737-a1b7-d72a109751cb?jobSite=LinkedIn&src=linkedin",
+            "https://ats.rippling.com/button/jobs/6673232b-93a2-4737-a1b7-d72a109751cb",
+            "https://ats.rippling.com/button/jobs/6673232b-93a2-4737-a1b7-d72a109751cb?src=indeed&jobSite=Indeed",
+        ],
         "taleo-costco": [
             # org + rid identify the requisition; cws + source/src/gns are
             # per-inbound-link noise that must not split the row.

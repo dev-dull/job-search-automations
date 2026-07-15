@@ -170,6 +170,12 @@ function deriveCareersUrl(rawUrl) {
   if (host.endsWith(".myworkdayjobs.com") && segs.length >= 2) {
     return `https://${host}/${segs[0]}/${segs[1]}`;
   }
+  // Rippling: ats.rippling.com/<slug>/jobs[/<uuid>] — first segment is the
+  // board slug; the backend verifies it against the public board API before
+  // creating the target (#22).
+  if (host === "ats.rippling.com" && segs.length >= 1) {
+    return `https://ats.rippling.com/${segs[0]}/jobs`;
+  }
   // Greenhouse on a custom domain (jobs.elastic.co): the host is unknown but
   // the gh_jid param is an unambiguous Greenhouse signal. Send the page URL
   // as-is — the backend guesses the board token from the domain and VERIFIES

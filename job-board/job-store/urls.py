@@ -24,6 +24,8 @@ import urllib.parse
 _TRACKING_PARAMS = {
     "gh_src", "utm_source", "utm_medium", "utm_campaign", "utm_term",
     "utm_content", "ref", "source", "lever-origin", "lever-source",
+    # Rippling inbound-link tracking (?jobSite=LinkedIn&src=linkedin).
+    "src", "jobSite",
 }
 
 # Path patterns that carry a Greenhouse posting id directly in the URL path
@@ -34,6 +36,8 @@ _UUID = r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"
 # trailing segment such as `/application` (Ashby) or `/apply` (Lever).
 _ASHBY_PATH = re.compile(rf"^/[^/]+/({_UUID})(?:/.*)?$", re.IGNORECASE)
 _LEVER_PATH = re.compile(rf"^/[^/]+/({_UUID})(?:/.*)?$", re.IGNORECASE)
+# Rippling posting: ats.rippling.com/<slug>/jobs/<uuid>
+_RIPPLING_PATH = re.compile(rf"^/[^/]+/jobs/({_UUID})(?:/.*)?$", re.IGNORECASE)
 # LinkedIn posting id in the path: /jobs/view/<id>
 _LINKEDIN_PATH = re.compile(r"/jobs/view/(\d+)")
 
@@ -139,6 +143,15 @@ def compute_dedupe_key(url):
         m = _LEVER_PATH.match(u.path or "")
         if m:
             return f"lever:{m.group(1).split('-')[0]}"
+
+    # Rippling: slug + posting uuid on the path; inbound-link tracking params
+    # (jobSite/src) are stripped by canonicalize_url, but keying on the uuid
+    # also collapses any future path variants. First UUID stanza, matching the
+    # Ashby/Lever convention.
+    if netloc == "ats.rippling.com":
+        m = _RIPPLING_PATH.match(u.path or "")
+        if m:
+            return f"rippling:{m.group(1).split('-')[0]}"
 
     # Taleo (Oracle): the requisition is identified by the org + rid query
     # params; everything else (cws, and source/src/gns inbound-link tracking)

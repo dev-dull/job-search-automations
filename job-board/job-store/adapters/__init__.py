@@ -7,7 +7,7 @@ Adapters do not call the job-store backend or touch the DB. They are pure
 ATS-fetch functions; orchestration lives in poller.py.
 """
 
-from . import ashby, greenhouse, lever, workday
+from . import ashby, greenhouse, lever, rippling, workday
 
 # `ats_platform` values come from `app.py:detect_ats()` and the plugin's
 # ATS_HOSTS list. Both surfaces standardize on the short slug (ashby, not
@@ -16,5 +16,6 @@ ADAPTERS = {
     "greenhouse": greenhouse,
     "ashby": ashby,
     "lever": lever,
+    "rippling": rippling,
     "workday": workday,
 }
