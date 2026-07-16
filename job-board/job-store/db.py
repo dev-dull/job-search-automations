@@ -14,6 +14,21 @@ from pathlib import Path
 # the root filesystem can stay read-only. WAL/SHM siblings land in the same dir.
 DB_PATH = Path(os.environ.get("JOBS_DB_PATH") or (Path(__file__).parent / "jobs.db"))
 
+# Canonical ats_platform labels. Different ingestion eras wrote different
+# spellings for the same ATS ('ashbyhq' from early plugin builds vs 'ashby'
+# from the poller), which splits per-platform ranking stats and breaks
+# platform-keyed logic (#67). Normalized on every write and migrated once.
+_PLATFORM_ALIASES = {
+    "ashbyhq": "ashby",
+}
+
+
+def normalize_platform(ats_platform):
+    if not ats_platform:
+        return ats_platform
+    p = ats_platform.strip().lower()
+    return _PLATFORM_ALIASES.get(p, p)
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -102,12 +117,50 @@ def init_db():
     existing_outcome_cols = {r["name"] for r in conn.execute("PRAGMA table_info(outcomes)").fetchall()}
     if "rejected" not in existing_outcome_cols:
         conn.execute("ALTER TABLE outcomes ADD COLUMN rejected INTEGER NOT NULL DEFAULT 0")
-    # Backfill any rows missing a dedupe key. Cheap — runs once per row.
+    # Normalize drifted ats_platform labels everywhere (#67) — early plugin
+    # builds wrote 'ashbyhq' where the poller writes 'ashby', splitting
+    # per-platform ranking stats across two labels.
+    for alias, canonical in _PLATFORM_ALIASES.items():
+        conn.execute("UPDATE jobs SET ats_platform = ? WHERE ats_platform = ?",
+                     (canonical, alias))
+        conn.execute("UPDATE company_targets SET ats_platform = ? WHERE ats_platform = ?",
+                     (canonical, alias))
+
+    # Re-key EVERY row whose dedupe_key doesn't match the current format (#66).
+    # dedupe_key is derived data and its format has changed over time (plain
+    # canonical URLs -> platform-prefixed keys); the old NULL-only backfill
+    # left stale-format keys in place, so a re-encountered posting missed the
+    # dedupe lookup and resurrected as a fresh row — bypassing the #51
+    # dismissed/applied protection. Idempotent and cheap at this table size.
     from urls import compute_dedupe_key
-    pending = conn.execute("SELECT id, url FROM jobs WHERE dedupe_key IS NULL").fetchall()
-    for r in pending:
-        conn.execute("UPDATE jobs SET dedupe_key = ? WHERE id = ?",
-                     (compute_dedupe_key(r["url"]), r["id"]))
+    for r in conn.execute("SELECT id, url, dedupe_key FROM jobs").fetchall():
+        key = compute_dedupe_key(r["url"])
+        if key != r["dedupe_key"]:
+            conn.execute("UPDATE jobs SET dedupe_key = ? WHERE id = ?", (key, r["id"]))
+
+    # Merge rows the re-key just made collide (the resurrection duplicates).
+    # Keep the row carrying workflow state (applied/closed — the user's
+    # decision), else the oldest; drop the rest. If MULTIPLE rows carry
+    # workflow state, leave them alone rather than destroy user data.
+    dupes = conn.execute(
+        "SELECT dedupe_key FROM jobs WHERE dedupe_key IS NOT NULL "
+        "GROUP BY dedupe_key HAVING COUNT(*) > 1"
+    ).fetchall()
+    for d in dupes:
+        rows = conn.execute(
+            "SELECT id, status FROM jobs WHERE dedupe_key = ? ORDER BY id",
+            (d["dedupe_key"],),
+        ).fetchall()
+        with_state = [r for r in rows if r["status"] in ("applied", "closed")]
+        if len(with_state) > 1:
+            continue
+        keep = (with_state[0] if with_state else rows[0])["id"]
+        conn.execute("DELETE FROM jobs WHERE dedupe_key = ? AND id != ?",
+                     (d["dedupe_key"], keep))
+
+    # Flush the migration writes first: journal_mode can't change inside the
+    # implicit transaction the UPDATEs above open.
+    conn.commit()
     conn.execute("PRAGMA journal_mode = WAL")
     conn.commit()
     conn.close()
@@ -139,6 +192,7 @@ def upsert_job(*, url, company, title, description, ats_platform, posted_at,
     """
     from urls import compute_dedupe_key
     dk = compute_dedupe_key(url)
+    ats_platform = normalize_platform(ats_platform)
     with cursor() as conn:
         existing = conn.execute(
             "SELECT id FROM jobs WHERE dedupe_key = ? OR url = ?", (dk, url)
@@ -415,6 +469,7 @@ def get_company_target(target_id):
 
 def create_company_target(*, name, careers_url, ats_platform, ats_identifier,
                           deny_list=None):
+    ats_platform = normalize_platform(ats_platform)
     with cursor() as conn:
         cur = conn.execute(
             """
