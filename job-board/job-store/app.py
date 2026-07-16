@@ -555,13 +555,21 @@ LIVENESS_TIMEOUT = 8
 
 
 def is_url_dead(url):
-    """Return True only when the URL clearly resolves to 404 / 410. Network
-    errors, timeouts, and other non-success statuses return False — we'd
-    rather keep a live job around as 'maybe alive' than delete on noise."""
+    """Return True only when the URL clearly resolves to a removed posting.
+    Network errors, timeouts, and other non-success statuses return False —
+    we'd rather keep a live job around as 'maybe alive' than delete on noise."""
     import urllib.error
     import urllib.request
     if not url or url.startswith("manual-paste"):
         return False
+    # SPA ATSes serve HTTP 200 shells for removed (even nonexistent) postings,
+    # so a status check on the public page can never find them dead (#65).
+    # Ask the platform's JSON API instead; None (undeterminable) stays alive.
+    from adapters import ashby as _ashby, workday as _workday
+    if _workday.HOST_RE.search(url):
+        return _workday.posting_dead(url) is True
+    if "jobs.ashbyhq.com" in url:
+        return _ashby.posting_dead(url) is True
     headers = {"User-Agent": "Mozilla/5.0 (compatible; job-store-cleanup/0.1)"}
     # Try HEAD first; many servers reject HEAD (405) so fall back to GET.
     for method in ("HEAD", "GET"):

@@ -33,6 +33,41 @@ def _strip_html(s: str) -> str:
     return _WS.sub(" ", decoded).strip()
 
 
+_POSTING_URL = re.compile(
+    r"jobs\.ashbyhq\.com/([^/?#]+)/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})",
+    re.IGNORECASE,
+)
+
+
+def posting_dead(public_url: str) -> bool | None:
+    """Liveness of a single posting via the org's board API.
+
+    Like Workday, `jobs.ashbyhq.com` serves an SPA shell with HTTP 200 for
+    every URL — removed and even nonexistent postings included (issue #65) —
+    so dead-link checks must consult the posting API: the posting is alive iff
+    its uuid appears in the org's current board. Returns None when
+    undeterminable (unparseable URL, board fetch failure); callers treat None
+    as alive."""
+    m = _POSTING_URL.search(public_url or "")
+    if not m:
+        return None
+    org, uuid = m.group(1), m.group(2).lower()
+    url = API_URL.format(org=urllib.parse.quote(org, safe=""))
+    req = urllib.request.Request(url, headers={"User-Agent": "job-store-poller/0.1"})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_SEC) as resp:
+            data = json.load(resp)
+    except Exception:
+        return None
+    jobs = data.get("jobs")
+    if not isinstance(jobs, list):
+        return None
+    listed = {str(j.get("id", "")).lower() for j in jobs}
+    listed |= {(j.get("jobUrl") or "").lower().rstrip("/").rsplit("/", 1)[-1]
+               for j in jobs}
+    return uuid not in listed
+
+
 def list_jobs(identifier: dict[str, Any]) -> list[dict[str, Any]]:
     """Return listed postings, newest-first by `publishedAt`."""
     org = (identifier or {}).get("org")

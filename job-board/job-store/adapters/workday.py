@@ -24,6 +24,7 @@ from __future__ import annotations
 import html
 import json
 import re
+import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
@@ -66,6 +67,47 @@ def _http_json(url: str, *, method: str = "GET", body: dict | None = None) -> di
 def _tenant(host: str) -> str:
     """Leftmost subdomain of the Workday host."""
     return host.split(".", 1)[0]
+
+
+def parse_public_url(url: str) -> tuple[str, str, str]:
+    """(host, site, external_path) from a public Workday posting URL.
+
+    Public URLs look like `https://<host>/<lang?>/<site>/job/<...>`; the site is
+    the segment immediately before "job" (lang is optional), so we anchor on the
+    "job" segment rather than assuming a fixed position."""
+    parts = urllib.parse.urlsplit(url)
+    segments = [s for s in parts.path.split("/") if s]
+    try:
+        ji = segments.index("job")
+    except ValueError as exc:
+        raise ValueError(f"no '/job/' segment in URL: {url}") from exc
+    if ji == 0:
+        raise ValueError(f"no site segment before '/job/' in URL: {url}")
+    return parts.netloc, segments[ji - 1], "/" + "/".join(segments[ji:])
+
+
+def posting_dead(public_url: str) -> bool | None:
+    """Liveness of a single posting via the CXS detail endpoint.
+
+    The public job page is an SPA shell that returns HTTP 200 even for removed
+    postings (issue #65), so dead-link checks must ask the JSON API instead:
+    200 with jobPostingInfo = alive, 403 (errorCode S22) or 404 = removed —
+    behavior confirmed against live tenants (June + July recon). Returns None
+    when undeterminable (unparseable URL, network noise); callers treat None
+    as alive."""
+    try:
+        host, site, ext = parse_public_url(public_url)
+    except ValueError:
+        return None
+    try:
+        detail = _http_json(_detail_url(host, site, ext), method="GET")
+    except urllib.error.HTTPError as e:
+        return True if e.code in (403, 404) else None
+    except Exception:
+        return None
+    if isinstance(detail, dict) and detail.get("jobPostingInfo"):
+        return False
+    return None
 
 
 def _public_job_url(host: str, lang: str | None, site: str, external_path: str) -> str:

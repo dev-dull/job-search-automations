@@ -26,10 +26,8 @@ import argparse
 import re
 import sqlite3
 import sys
-from urllib.parse import urlsplit
-
 import db
-from adapters.workday import _detail_url, _http_json
+from adapters.workday import _detail_url, _http_json, parse_public_url
 
 _WS = re.compile(r"\s+")
 
@@ -60,26 +58,9 @@ def _strip_reqid(slug: str) -> str:
     return slug
 
 
-def _parse_public_url(url: str) -> tuple[str, str, str]:
-    """Pull (host, site, external_path) out of a stored public Workday URL.
-
-    Public URLs look like:
-        https://<host>/<lang?>/<site>/job/<slug>_<reqid>
-    The site is the path segment immediately before "job"; the external path is
-    "/job/..." onward. `lang` is optional (some tenants omit it), so we anchor
-    on the "job" segment rather than assuming a fixed position.
-    """
-    parts = urlsplit(url)
-    segments = [s for s in parts.path.split("/") if s]
-    try:
-        ji = segments.index("job")
-    except ValueError as exc:
-        raise ValueError(f"no '/job/' segment in URL: {url}") from exc
-    if ji == 0:
-        raise ValueError(f"no site segment before '/job/' in URL: {url}")
-    site = segments[ji - 1]
-    external_path = "/" + "/".join(segments[ji:])
-    return parts.netloc, site, external_path
+# Parsing lives in the adapter now (it also powers the SPA dead-link probe,
+# #65); kept under the old private name for existing callers/tests.
+_parse_public_url = parse_public_url
 
 
 def _fetch_title(url: str) -> str:
