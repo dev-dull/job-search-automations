@@ -354,6 +354,8 @@ def score_job():
             "status": existing.get("status"),
             "fit_score": existing["fit_score"],
             "company": existing.get("company"),
+            "title": existing.get("title"),
+            "scored_at": existing.get("discovered_at"),
             "analysis": db.parse_analysis(existing.get("analysis_json")),
         }), 200
 
@@ -400,6 +402,8 @@ def score_job():
                 "status": existing.get("status"),
                 "fit_score": existing["fit_score"],
                 "company": existing.get("company"),
+                "title": existing.get("title"),
+                "scored_at": existing.get("discovered_at"),
                 "analysis": cached_analysis,
                 "cached": True,
             }), 200
@@ -729,11 +733,19 @@ def companies_index():
 def create_company():
     careers_url = (request.form.get("careers_url") or "").strip()
     name = (request.form.get("name") or "").strip()
+    # XHR callers (the plugin's watch button) send Accept: application/json and
+    # get structured results instead of rendered HTML pages — clicking Watch on
+    # an already-watched company must not surface "<!DOCTYPE html>..." (#57).
+    wants_json = "application/json" in (request.headers.get("Accept") or "")
+
+    def _fail(msg, status):
+        if wants_json:
+            return jsonify({"ok": False, "error": msg}), status
+        return _render_companies(add_error=msg, add_url=careers_url,
+                                 add_name=name, status=status)
+
     if not careers_url:
-        return _render_companies(
-            add_error="Careers URL is required.",
-            add_url=careers_url, add_name=name, status=400,
-        )
+        return _fail("Careers URL is required.", 400)
 
     ats_platform, identifier = detect_ats(careers_url)
 
@@ -763,8 +775,7 @@ def create_company():
 
     if ats_platform == "other":
         supported = ", ".join(SUPPORTED_ATSES)
-        return _render_companies(
-            add_error=(
+        return _fail((
                 f"{careers_url} isn't on a supported ATS and doesn't embed one. "
                 f"The poller only knows how to talk to {supported}. "
                 f"Try a direct job-board URL — e.g., "
@@ -774,9 +785,7 @@ def create_company():
                 f"https://<tenant>.<region>.myworkdayjobs.com/<lang>/<site> — "
                 f"or, for a Greenhouse board on a custom domain, a posting link "
                 f"that carries gh_jid."
-            ),
-            add_url=careers_url, add_name=name, status=400,
-        )
+            ), 400)
 
     # Greenhouse: verify the board token against the public API before saving —
     # a mis-parsed token would create a target that 404s on every poll (#52,
@@ -786,15 +795,12 @@ def create_company():
         from adapters import greenhouse as _gh
         board_name = _gh.verify_board_exists((identifier or {}).get("board"))
         if board_name is None:
-            return _render_companies(
-                add_error=(
+            return _fail((
                     f"Couldn't verify Greenhouse board "
                     f"{(identifier or {}).get('board')!r} from {careers_url} "
                     f"against the public board API. Paste the board URL "
                     f"(https://boards.greenhouse.io/<board>) or a posting link."
-                ),
-                add_url=careers_url, add_name=name, status=422,
-            )
+                ), 422)
         if not name and board_name:
             name = board_name
 
@@ -805,16 +811,13 @@ def create_company():
         from adapters import icims as _icims
         tenant = (identifier or {}).get("tenant")
         if not _icims.verify_tenant(tenant):
-            return _render_companies(
-                add_error=(
+            return _fail((
                     f"Couldn't crawl iCIMS tenant {tenant!r} — this tenant "
                     f"doesn't serve the classic listing path the poller needs "
                     f"(some iCIMS customers bot-guard all requests). This "
                     f"company can't be watched; individual postings can still "
                     f"be scored via the browser plugin."
-                ),
-                add_url=careers_url, add_name=name, status=422,
-            )
+                ), 422)
         careers_url = f"https://{tenant}.icims.com/jobs/search?ss=1"
 
     # Rippling: verify the board slug on the public API before saving; store
@@ -823,14 +826,11 @@ def create_company():
         from adapters import rippling as _rippling
         slug = (identifier or {}).get("slug")
         if not _rippling.verify_board(slug):
-            return _render_companies(
-                add_error=(
+            return _fail((
                     f"Couldn't verify Rippling board {slug!r} from {careers_url} "
                     f"against the public board API. Paste the board URL "
                     f"(https://ats.rippling.com/<slug>/jobs) or a posting link."
-                ),
-                add_url=careers_url, add_name=name, status=422,
-            )
+                ), 422)
         careers_url = f"https://ats.rippling.com/{slug}/jobs"
 
     # Workday: verify the parsed identifier against the live CXS API before
@@ -841,14 +841,11 @@ def create_company():
         from adapters import workday as _workday
         resolved = _workday.resolve_identifier(careers_url)
         if resolved is None:
-            return _render_companies(
-                add_error=(
+            return _fail((
                     f"Couldn't resolve a live Workday career site from "
                     f"{careers_url}. Paste the careers-page URL, e.g. "
                     f"https://<tenant>.<shard>.myworkdayjobs.com/<lang>/<site>."
-                ),
-                add_url=careers_url, add_name=name, status=422,
-            )
+                ), 422)
         identifier = resolved
         # Store the canonical careers URL for the verified site, not the pasted
         # deep link — keeps the row readable and collapses obvious duplicates.
@@ -865,11 +862,14 @@ def create_company():
             ats_identifier=identifier,
         )
     except Exception as err:
-        # Most likely a UNIQUE constraint violation on careers_url
-        return _render_companies(
-            add_error=f"Could not add company: {err}",
-            add_url=careers_url, add_name=name, status=400,
-        )
+        # Most likely a UNIQUE constraint violation on careers_url — for JSON
+        # callers that's a benign "already watching", not an error.
+        if wants_json and "unique" in str(err).lower():
+            return jsonify({"ok": True, "existing": True,
+                            "careers_url": careers_url}), 200
+        return _fail(f"Could not add company: {err}", 400)
+    if wants_json:
+        return jsonify({"ok": True, "name": name, "careers_url": careers_url}), 200
     return redirect(url_for("companies_index"))
 
 

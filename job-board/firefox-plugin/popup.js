@@ -527,9 +527,12 @@ function renderResult(job, rawFit, usage) {
   $("recommendation-label").textContent = rec.label;
   $("ats-platform").textContent = job.ats !== "unknown" ? job.ats : "";
   $("summary").textContent = firstSentence(fit.candidate_explanation);
-  const companyTitle = fit.job_company_name
-    ? `${fit.job_company_name} — ${job.title}`
-    : job.title;
+  // Null-tolerant: backend lookups may lack a title, analyses may lack a
+  // company — never render "Acme — null" or throw on .slice (#58).
+  const _name = fit.job_company_name || null;
+  const _title = job.title || null;
+  const companyTitle = (_name && _title) ? `${_name} — ${_title}`
+    : (_name || _title || "(untitled)");
   $("job-title").textContent = companyTitle.slice(0, 70);
 
   // Subscore badges — only rendered if the field is present (old cached
@@ -617,7 +620,9 @@ function renderCacheNotice(state) {
     return;
   }
   el.hidden = false;
-  el.textContent = `Cached • scored ${formatAge(state.timestamp)}`;
+  el.textContent = Number.isFinite(state.timestamp)
+    ? `Cached • scored ${formatAge(state.timestamp)}`
+    : "Cached";
 }
 
 function showError(message) {
@@ -803,7 +808,14 @@ async function setupWatchBar() {
     const r = await fetch(`${backend}/companies.json`);
     if (r.ok) {
       const list = await r.json();
-      alreadyWatched = list.some((t) => (t.careers_url || "") === careersUrl);
+      alreadyWatched = list.some((t) => {
+        const stored = t.careers_url || "";
+        // exact, or the stored canonical URL is a prefix of what we derived
+        // (backend stores https://host/site for single-segment Workday while
+        // we derive https://host/site/job from a posting path).
+        return stored === careersUrl ||
+               (stored && careersUrl.startsWith(stored + "/"));
+      });
     }
   } catch { /* keep button enabled */ }
 
@@ -828,16 +840,25 @@ async function setupWatchBar() {
       const body = new URLSearchParams({ careers_url: careersUrl });
       const r = await fetch(`${backend}/companies`, {
         method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          // JSON mode: the backend answers with structured results instead of
+          // rendered HTML pages, including "already watching" (#57).
+          "accept": "application/json",
+        },
         body,
-        redirect: "manual",
       });
-      // Flask redirects to /companies on success (302). fetch with redirect:manual
-      // returns response.type === "opaqueredirect" with status 0 — treat as success.
-      const ok = r.ok || r.type === "opaqueredirect" || r.status === 0 || r.status === 302;
-      if (!ok) {
-        const text = await r.text().catch(() => "");
-        throw new Error(text.slice(0, 200) || `HTTP ${r.status}`);
+      let data = null;
+      try { data = await r.json(); } catch { /* non-JSON (old backend) */ }
+      if (data) {
+        if (!data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        btn.textContent = data.existing ? "✓ Already watching" : "✓ Watching";
+        btn.classList.add("is-watched");
+        return;
+      }
+      // Old backend fallback: form-mode success is a redirect to /companies.
+      if (!(r.ok || r.redirected)) {
+        throw new Error(`HTTP ${r.status}`);
       }
       btn.textContent = "✓ Watching";
       btn.classList.add("is-watched");

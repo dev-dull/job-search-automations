@@ -13,6 +13,8 @@ const SCORE_CACHE_MAX = 200;
 const TRACKING_PARAMS = new Set([
   "gh_src", "utm_source", "utm_medium", "utm_campaign", "utm_term",
   "utm_content", "ref", "source", "lever-origin", "lever-source",
+  "src", "jobSite",              // Rippling inbound-link tracking
+  "iis", "iisn", "in_iframe", "ss",  // iCIMS tracking + render flags
 ]);
 
 // Stable cache key for a job posting. Same posting reached via different
@@ -44,8 +46,22 @@ function canonicalizeJobUrl(rawUrl) {
     if (!ghJid && u.hostname.endsWith("greenhouse.io")) {
       const m = u.pathname.match(/^\/[^/]+\/jobs\/(\d+)\/?$/);
       if (m) ghJid = m[1];
+      // job_app embed iframes carry the posting id as ?token=<id>.
+      if (!ghJid && u.pathname.startsWith("/embed/job_app")) {
+        const tok = u.searchParams.get("token");
+        if (tok && /^\d+$/.test(tok)) ghJid = tok;
+      }
     }
     if (ghJid) return `gh:${ghJid}`;
+
+    // Workday: host + requisition id (trailing "_JR123..." token of the last
+    // path segment) — collapses locale, location-segment, and query variants.
+    if (u.hostname.endsWith(".myworkdayjobs.com")) {
+      const seg = u.pathname.replace(/\/+$/, "").split("/").pop() || "";
+      const i = seg.lastIndexOf("_");
+      const tail = i >= 0 ? seg.slice(i + 1) : "";
+      if (tail && /\d/.test(tail)) return `wd:${u.hostname}:${tail}`;
+    }
 
     // Ashby: ashby_jid query param (embed wrapper on any host, e.g.
     // www.ashbyhq.com/careers?ashby_jid=<uuid>) or UUID at the end of the
@@ -53,10 +69,35 @@ function canonicalizeJobUrl(rawUrl) {
     // tidy.
     let ashbyJid = u.searchParams.get("ashby_jid");
     if (!ashbyJid && u.hostname === "jobs.ashbyhq.com") {
-      const m = u.pathname.match(/^\/[^/]+\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\/?$/i);
+      const m = u.pathname.match(/^\/[^/]+\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})(?:\/.*)?$/i);
       if (m) ashbyJid = m[1];
     }
     if (ashbyJid) return `ashby:${ashbyJid.split("-")[0]}`;
+
+    // Lever: jobs.lever.co/<company>/<uuid>[/apply]
+    if (u.hostname === "jobs.lever.co") {
+      const m = u.pathname.match(/^\/[^/]+\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})(?:\/.*)?$/i);
+      if (m) return `lever:${m[1].split("-")[0]}`;
+    }
+
+    // Rippling: ats.rippling.com/<slug>/jobs/<uuid>
+    if (u.hostname === "ats.rippling.com") {
+      const m = u.pathname.match(/^\/[^/]+\/jobs\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})(?:\/.*)?$/i);
+      if (m) return `rippling:${m[1].split("-")[0]}`;
+    }
+
+    // iCIMS: <tenant>.icims.com/jobs/<id>/...
+    if (u.hostname.endsWith(".icims.com")) {
+      const m = u.pathname.match(/^\/jobs\/(\d+)\//);
+      if (m) return `icims:${u.hostname.split(".")[0]}:${m[1]}`;
+    }
+
+    // Taleo: org + rid query params identify the requisition.
+    if (u.hostname.includes("taleo.net")) {
+      const org = (u.searchParams.get("org") || "").toLowerCase();
+      const rid = u.searchParams.get("rid");
+      if (org && rid) return `taleo:${org}:${rid}`;
+    }
 
     // Generic: drop tracking params, strip trailing slash on the path. Stays
     // as a URL because there's no opaque id to extract.
@@ -170,6 +211,11 @@ function deriveCareersUrl(rawUrl) {
   if (host.endsWith(".myworkdayjobs.com") && segs.length >= 2) {
     return `https://${host}/${segs[0]}/${segs[1]}`;
   }
+  // iCIMS: <tenant>.icims.com — canonical careers URL matches what the
+  // backend stores after verify-at-create (#29).
+  if (host.endsWith(".icims.com") && host !== "icims.com") {
+    return `https://${host}/jobs/search?ss=1`;
+  }
   // Rippling: ats.rippling.com/<slug>/jobs[/<uuid>] — first segment is the
   // board slug; the backend verifies it against the public board API before
   // creating the target (#22).
@@ -221,10 +267,15 @@ async function lookupBackendScore(rawUrl, backendUrl) {
     if (!r.ok) return null;
     const data = await r.json();
     if (data?.analysis == null) return null;
+    // scored_at is sqlite "YYYY-MM-DD HH:MM:SS" (UTC); normalize for Date.parse.
+    const ts = data.scored_at
+      ? Date.parse(String(data.scored_at).replace(" ", "T") + (String(data.scored_at).includes("+") ? "" : "Z"))
+      : NaN;
     return {
-      job: { url: rawUrl, ats: null, title: null, description: "" },
+      job: { url: rawUrl, ats: null, title: data.title || null, description: "" },
       fit: data.analysis,
       usage: {},
+      timestamp: Number.isFinite(ts) ? ts : undefined,
     };
   } catch {
     return null;

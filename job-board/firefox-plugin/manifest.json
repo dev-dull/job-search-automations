@@ -6,7 +6,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "job-fit-scorer@devdull.lol",
-      "strict_min_version": "115.0"
+      "strict_min_version": "128.0"
     }
   },
   "background": {
