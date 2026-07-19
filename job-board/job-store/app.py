@@ -21,6 +21,7 @@ import zipfile
 
 from flask import (Flask, abort, jsonify, redirect, render_template, request,
                    send_file, url_for)
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
 import ranking
@@ -28,6 +29,12 @@ from urls import canonicalize_url
 
 
 app = Flask(__name__)
+# Behind the TLS-terminating ingress, honor X-Forwarded-Proto/-Host so
+# request.host_url builds https:// links — without this, updates.json
+# advertised an http:// update_link and Firefox auto-update survived only on
+# the update_hash exemption + the ingress redirect (#55). One trusted proxy
+# hop: in-cluster, the ClusterIP service is only reachable via the ingress.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 db.init_db()
 
 
