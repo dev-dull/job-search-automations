@@ -69,14 +69,18 @@ def _registrable_label(hostname: str) -> str | None:
 
 
 def board_candidates(hostname: str) -> list[str]:
-    """Ordered candidate board tokens derived from a vanity careers hostname."""
+    """Ordered candidate board tokens derived from a vanity careers hostname.
+
+    Includes the '<label>jobs' variant: companies commonly suffix their board
+    token (www.hubspot.com's board is 'hubspotjobs', found only in their JS
+    bundle). A wrong candidate just fails verification."""
     label = _registrable_label(hostname)
     if not label or label in _GENERIC_LABELS:
         return []
-    out = [label]
+    out = [label, f"{label}jobs"]
     dehyphenated = label.replace("-", "")
     if dehyphenated != label:
-        out.append(dehyphenated)
+        out += [dehyphenated, f"{dehyphenated}jobs"]
     return out
 
 
@@ -124,17 +128,32 @@ def verify_board_exists(board: str) -> str | None:
         return None
 
 
+# Trailing numeric path segment that can stand in for a missing gh_jid param
+# (www.hubspot.com/careers/jobs/7988809). Greenhouse job ids are long; the
+# length floor keeps /page/2-style paths from triggering API probes.
+_PATH_JID = re.compile(r"/(\d{5,})/?$")
+
+
 def resolve_board_from_url(careers_url: str, *, verify=None) -> str | None:
     """Resolve a verified board token from a Greenhouse custom-domain posting
-    URL (one carrying gh_jid). Returns the token, or None when the URL has no
-    gh_jid or no candidate verifies. `verify` is injectable for tests; at most
-    len(candidates) (≤2) API calls."""
+    URL. The posting id comes from the gh_jid query param, or — when absent —
+    a trailing numeric path segment (HubSpot-style /careers/jobs/<id>). Returns
+    the token, or None when there's no usable id or no candidate verifies.
+    `verify` is injectable for tests; at most len(candidates) (≤4) API calls."""
     verify = verify or verify_board
     try:
         u = urllib.parse.urlsplit(careers_url or "")
     except ValueError:
         return None
+    host = (u.hostname or "").lower()
+    # First-party Greenhouse hosts are detect_ats's job, not a custom domain —
+    # guessing a board from "greenhouse.io" itself would be nonsense.
+    if host == "greenhouse.io" or host.endswith(".greenhouse.io"):
+        return None
     gh_jid = urllib.parse.parse_qs(u.query).get("gh_jid", [None])[0]
+    if not gh_jid:
+        m = _PATH_JID.search(u.path or "")
+        gh_jid = m.group(1) if m else None
     if not gh_jid:
         return None
     for cand in board_candidates(u.hostname or ""):

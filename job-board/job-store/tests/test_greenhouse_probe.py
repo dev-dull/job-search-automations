@@ -27,17 +27,20 @@ def _verify_only(good_board):
 
 class BoardCandidatesTest(unittest.TestCase):
     def test_vanity_subdomain(self):
-        self.assertEqual(greenhouse.board_candidates("jobs.elastic.co"), ["elastic"])
+        self.assertEqual(greenhouse.board_candidates("jobs.elastic.co"),
+                         ["elastic", "elasticjobs"])
 
     def test_careers_prefix_and_com(self):
-        self.assertEqual(greenhouse.board_candidates("careers.acme.com"), ["acme"])
+        self.assertEqual(greenhouse.board_candidates("careers.acme.com"),
+                         ["acme", "acmejobs"])
 
     def test_two_part_public_suffix(self):
-        self.assertEqual(greenhouse.board_candidates("careers.acme.co.uk"), ["acme"])
+        self.assertEqual(greenhouse.board_candidates("careers.acme.co.uk"),
+                         ["acme", "acmejobs"])
 
     def test_hyphenated_label_adds_dehyphenated_variant(self):
         self.assertEqual(greenhouse.board_candidates("jobs.big-corp.com"),
-                         ["big-corp", "bigcorp"])
+                         ["big-corp", "big-corpjobs", "bigcorp", "bigcorpjobs"])
 
     def test_generic_registrable_label_yields_nothing(self):
         # e.g. a host like www.jobs.com — "jobs" is furniture, not a company.
@@ -68,6 +71,31 @@ class BoardFromEmbedUrlTest(unittest.TestCase):
         self.assertIsNone(greenhouse.board_from_embed_url(
             "https://boards.greenhouse.io/embed/job_board"))
         self.assertIsNone(greenhouse.board_from_embed_url(""))
+
+
+class PathJidResolveTest(unittest.TestCase):
+    """HubSpot-style: no gh_jid param, posting id as a trailing path segment."""
+
+    HUBSPOT = "https://www.hubspot.com/careers/jobs/7988809?hubs_signup-cta=careers-apply"
+
+    def test_hubspot_url_resolves_via_jobs_suffix_candidate(self):
+        got = greenhouse.resolve_board_from_url(
+            self.HUBSPOT, verify=lambda b, j: b == "hubspotjobs")
+        self.assertEqual(got, "hubspotjobs")
+
+    def test_verify_receives_the_path_id(self):
+        seen = []
+        greenhouse.resolve_board_from_url(self.HUBSPOT,
+                                          verify=lambda b, j: seen.append(j) or True)
+        self.assertEqual(seen[0], "7988809")
+
+    def test_short_trailing_number_does_not_probe(self):
+        calls = []
+        got = greenhouse.resolve_board_from_url(
+            "https://www.acme.com/blog/page/2",
+            verify=lambda b, j: calls.append(b) or True)
+        self.assertIsNone(got)
+        self.assertEqual(calls, [])
 
 
 class ResolveBoardTest(unittest.TestCase):

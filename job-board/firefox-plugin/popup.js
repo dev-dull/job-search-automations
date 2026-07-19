@@ -350,6 +350,46 @@ async function extractCurrentTab() {
     }
   }
 
+  // Greenhouse behind a custom domain with NO embed script and NO gh_jid param
+  // (HubSpot: www.hubspot.com/careers/jobs/7988809 serves a JS shell; the JD
+  // loads client-side, so page scraping gets directory chrome). Guess board
+  // tokens from the domain (hubspot -> hubspot, hubspotjobs, ...) and verify
+  // the specific posting id against the public board API; on a hit, use the
+  // canonical content. Mirrors the backend resolver in adapters/greenhouse.py.
+  const pathJid = (jobUrl.pathname.match(/\/(\d{5,})\/?$/) || [])[1];
+  if (job.ats === "unknown" && pathJid) {
+    const parts = jobUrl.hostname.toLowerCase().split(".");
+    const twoPart = new Set(["co.uk", "org.uk", "co.jp", "com.au", "com.br"]);
+    const suffixLen = twoPart.has(parts.slice(-2).join(".")) ? 2 : 1;
+    const label = parts[parts.length - suffixLen - 1];
+    const generic = new Set(["www", "jobs", "careers", "apply", "boards", "talent"]);
+    if (label && !generic.has(label)) {
+      const dehyph = label.replace(/-/g, "");
+      const candidates = [...new Set([label, `${label}jobs`, dehyph, `${dehyph}jobs`])];
+      for (const board of candidates) {
+        try {
+          const r = await fetch(
+            `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(board)}/jobs/${encodeURIComponent(pathJid)}`
+          );
+          if (!r.ok) continue;
+          const data = await r.json();
+          const tmp = document.createElement("div");
+          tmp.innerHTML = data.content || "";
+          const plain = (tmp.innerText || tmp.textContent || "").trim();
+          if (plain.length > 200) {
+            job.title = data.title || job.title;
+            job.description = plain;
+            job.ats = "greenhouse";
+          }
+          break;
+        } catch (err) {
+          console.warn("Greenhouse board-guess fetch failed:", err);
+          break;
+        }
+      }
+    }
+  }
+
   return job;
 }
 

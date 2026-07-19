@@ -176,11 +176,14 @@ function deriveCareersUrl(rawUrl) {
   if (host === "ats.rippling.com" && segs.length >= 1) {
     return `https://ats.rippling.com/${segs[0]}/jobs`;
   }
-  // Greenhouse on a custom domain (jobs.elastic.co): the host is unknown but
-  // the gh_jid param is an unambiguous Greenhouse signal. Send the page URL
-  // as-is — the backend guesses the board token from the domain and VERIFIES
-  // it against the board API before creating the target (issue #43).
-  if (u.searchParams.get("gh_jid")) {
+  // Greenhouse on a custom domain: the host is unknown but the URL carries a
+  // Greenhouse posting id — either the unambiguous gh_jid param
+  // (jobs.elastic.co, issue #43) or a trailing numeric id on a job-ish path
+  // (www.hubspot.com/careers/jobs/7988809). Send the page URL as-is — the
+  // backend guesses the board token from the domain and VERIFIES the specific
+  // posting against the board API before creating the target.
+  if (u.searchParams.get("gh_jid") ||
+      /\/(jobs?|careers|positions|openings)\/.*\d{5,}\/?$/i.test(u.pathname)) {
     return rawUrl;
   }
   return null;
