@@ -79,6 +79,38 @@ function extractInPage() {
     return null;
   })();
 
+  // Rippling (and other Next.js ATSes) SSR the posting into __NEXT_DATA__
+  // instead of an ld+json tag (issue #22 recon): apiData.jobPost carries name,
+  // companyName, createdOn, and description as {company, role} HTML strings.
+  // The blob is already in the DOM, so this needs no fetch.
+  const nd = (() => {
+    if (ld) return null;                        // ld+json wins when present
+    const el = document.getElementById("__NEXT_DATA__");
+    if (!el) return null;
+    const clean = (s) => {
+      const d = document.createElement("div");
+      d.innerHTML = s || "";
+      return (d.textContent || "").replace(/\s+/g, " ").trim();
+    };
+    try {
+      const data = JSON.parse(el.textContent);
+      const jp = data && data.props && data.props.pageProps &&
+                 data.props.pageProps.apiData && data.props.pageProps.apiData.jobPost;
+      if (!jp || !jp.name) return null;
+      const desc = (jp.description && typeof jp.description === "object")
+        ? [jp.description.role, jp.description.company].map(clean).filter(Boolean).join("\n\n")
+        : clean(jp.description);
+      return {
+        title: (jp.name || "").trim() || null,
+        description: desc,
+        postedAt: (jp.createdOn || "").slice(0, 10) || null,
+        company: jp.companyName || null,
+      };
+    } catch {
+      return null;
+    }
+  })();
+
   // Title extraction is ATS-specific-first, then generic fallback. Two known
   // traps the specific selectors avoid:
   //   - LinkedIn split-pane (`/jobs/collections/.../?currentJobId=N`) renders a
@@ -92,7 +124,7 @@ function extractInPage() {
     document.querySelector("[class*='jobs-unified-top-card__job-title']") ||  // LinkedIn
     document.querySelector("[data-automation-id='jobPostingHeader']") ||      // Workday
     document.querySelector("h1");
-  const title = (ld?.title || titleEl?.innerText || document.title || "").trim();
+  const title = (ld?.title || nd?.title || titleEl?.innerText || document.title || "").trim();
 
   // Two-tier extraction. Tier 1 is ATS-specific selectors known to wrap just
   // the description — if any match with substantial text we prefer them, since
@@ -186,7 +218,9 @@ function extractInPage() {
   // full JD, free of page chrome (e.g. Taleo, whose DOM is a legacy frame mess).
   const domDescription = (main?.innerText || document.body.innerText || "").trim();
   const description =
-    (ld?.description && ld.description.length >= 200) ? ld.description : domDescription;
+    (ld?.description && ld.description.length >= 200) ? ld.description
+      : (nd?.description && nd.description.length >= 200) ? nd.description
+      : domDescription;
 
   // If this page embeds Greenhouse via their JS embed (`<script src=
   // "boards.greenhouse.io/embed/job_board/js?for=<token>">`), surface the
@@ -214,8 +248,10 @@ function extractInPage() {
     ashbyOrgSlug = "ashby";
   }
 
-  return { url, hostname, title, description, posted_at: ld?.postedAt || null,
-           company: ld?.company || null, greenhouseBoardToken, ashbyOrgSlug };
+  return { url, hostname, title, description,
+           posted_at: ld?.postedAt || nd?.postedAt || null,
+           company: ld?.company || nd?.company || null,
+           greenhouseBoardToken, ashbyOrgSlug };
 }
 
 function detectAts(hostname) {
