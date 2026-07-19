@@ -688,9 +688,16 @@ def _infer_name_from_identifier(careers_url, ats_platform, identifier):
         # Fall back to the URL's hostname
         m = re.search(r"https?://([^/]+)", careers_url)
         return (m.group(1) if m else "Unnamed").split(".")[0].capitalize()
-    for key in ("board", "company", "org"):
+    for key in ("board", "company", "org", "slug"):
         if identifier.get(key):
             return identifier[key].replace("-", " ").replace("_", " ").title()
+    if identifier.get("tenant"):
+        # iCIMS tenants are companies wearing hosting furniture: the slug is
+        # 'careers-healthedge' / 'jobs-<co>' — the company is what's left
+        # after the prefix, not the whole tenant string.
+        name = re.sub(r"^(careers|career|jobs|recruiting|talent|apply)-", "",
+                      identifier["tenant"])
+        return name.replace("-", " ").title()
     if ats_platform == "workday" and identifier.get("host"):
         return identifier["host"].split(".")[0].capitalize()
     return "Unnamed"
