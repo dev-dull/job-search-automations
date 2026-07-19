@@ -77,6 +77,10 @@ ATS_DETECTORS = [
     # slug (verified against the public board API at create time).
     (re.compile(r"ats\.rippling\.com/([^/?#]+)"), "rippling",
      lambda m: {"slug": m.group(1)}),
+    # <tenant>.icims.com — the subdomain is the tenant (verified crawlable at
+    # create time; iCIMS tenants vary, see adapters/icims.py).
+    (re.compile(r"(?:^|//)([a-z0-9-]+)\.icims\.com", re.IGNORECASE), "icims",
+     lambda m: {"tenant": m.group(1).lower()}),
     (re.compile(
         r"(?P<host>[a-z0-9-]+\.[a-z0-9-]+\.myworkdayjobs\.com)"
         r"/(?P<first>[^/?#]+)(?:/(?P<second>[^/?#]+))?"
@@ -706,7 +710,7 @@ def _render_companies(add_error=None, add_url="", add_name="", status=200):
     )
 
 
-SUPPORTED_ATSES = ("Greenhouse", "Ashby", "Lever", "Rippling", "Workday")
+SUPPORTED_ATSES = ("Greenhouse", "Ashby", "iCIMS", "Lever", "Rippling", "Workday")
 
 
 @app.route("/companies", methods=["GET"])
@@ -786,6 +790,25 @@ def create_company():
             )
         if not name and board_name:
             name = board_name
+
+    # iCIMS: tenants vary — some serve the crawlable classic-iframe path, some
+    # bot-shell everything. Probe the listing at create time so only workable
+    # tenants become targets (#29); the rest fail closed with a clear error.
+    if ats_platform == "icims":
+        from adapters import icims as _icims
+        tenant = (identifier or {}).get("tenant")
+        if not _icims.verify_tenant(tenant):
+            return _render_companies(
+                add_error=(
+                    f"Couldn't crawl iCIMS tenant {tenant!r} — this tenant "
+                    f"doesn't serve the classic listing path the poller needs "
+                    f"(some iCIMS customers bot-guard all requests). This "
+                    f"company can't be watched; individual postings can still "
+                    f"be scored via the browser plugin."
+                ),
+                add_url=careers_url, add_name=name, status=422,
+            )
+        careers_url = f"https://{tenant}.icims.com/jobs/search?ss=1"
 
     # Rippling: verify the board slug on the public API before saving; store
     # the canonical board URL rather than a pasted job-detail link (#22).

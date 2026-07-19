@@ -1,7 +1,7 @@
 # iCIMS adapter: investigation notes
 
 **Date**: 2026-06-04
-**Status**: Deferred. No iCIMS adapter exists in `job-store/adapters/`.
+**Status**: Implemented for classic-iframe tenants (`job-store/adapters/icims.py`, issue #29, 2026-07-19): listing via `jobs/search?ss=1&in_iframe=1&pr=N`, detail via the job page's `?in_iframe=1` ld+json, and per-tenant crawlability verified at create time — which resolves the per-tenant-variance objection below. Bot-guarded tenants (like the Rivian case that prompted this doc) still correctly fail at create. Kept for the recon rationale.
 
 ## Context
 

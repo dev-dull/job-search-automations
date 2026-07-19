@@ -24,7 +24,7 @@ The poller (`poller.py`) is a standalone HTTP client of the backend (it shares o
 | `poller.py` | Targeted-company poller CLI (see below) |
 | `branch_high_priority.py` | Bulk-creates branches in the resume repo for jobs above a fit/rank threshold |
 | `csv_import.py` | One-shot CLI to seed `outcomes` from a historical job-hunt CSV |
-| `adapters/{greenhouse,ashby,lever,rippling,workday}.py` | Per-ATS `list_jobs(identifier) -> [job, …]` |
+| `adapters/{greenhouse,ashby,icims,lever,rippling,workday}.py` | Per-ATS `list_jobs(identifier) -> [job, …]` |
 | `templates/index.html` `templates/companies.html` `static/style.css` | Inbox + companies UI |
 | `requirements.txt` | `flask` + `anthropic` |
 
@@ -102,6 +102,7 @@ Companies UI + JSON read. POST `/companies` accepts a careers URL; if it isn't o
 
 - **Workday** URLs (careers page, job-detail link, or bare tenant host) are resolved to `{host, lang?, site}` and **verified against the live CXS API before saving** — an unresolvable site is rejected with a 422 instead of creating a target that 404s on every poll.
 - **Rippling** board slugs are verified against the public board API before saving.
+- **iCIMS** tenants are probed for the crawlable classic-iframe listing at create time — crawlable tenants (e.g. HealthEdge) become watchable; bot-guarded ones (e.g. Rivian) are rejected with a clear error (plugin-only scoring still works for individual postings).
 - **Greenhouse custom domains** (e.g. `jobs.elastic.co`) expose no board token in the page; paste a posting link carrying `gh_jid` and the backend guesses candidate tokens from the domain, **verifies the specific posting exists on that board**, and stores the canonical `boards.greenhouse.io/<board>` target. A wrong guess (or a closed posting) fails closed.
 
 ### `GET /resume`

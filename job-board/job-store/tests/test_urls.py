@@ -53,6 +53,12 @@ class DedupeKeyCollapseTest(unittest.TestCase):
             "https://jobs.lever.co/foo/abcdef12-3456-7890-abcd-ef1234567890/apply",
             "https://jobs.lever.co/foo/abcdef12-3456-7890-abcd-ef1234567890?lever-source=LinkedIn",
         ],
+        "icims-healthedge": [
+            # iis/iisn are inbound-source tracking; in_iframe/ss are render flags.
+            "https://careers-healthedge.icims.com/jobs/8130/senior-release-engineer/job",
+            "https://careers-healthedge.icims.com/jobs/8130/senior-release-engineer/job?in_iframe=1",
+            "https://careers-healthedge.icims.com/jobs/8130/senior-release-engineer/job?iis=LinkedIn&iisn=job_posting",
+        ],
         "rippling-button": [
             # jobSite/src are inbound-link tracking; param order irrelevant.
             "https://ats.rippling.com/button/jobs/6673232b-93a2-4737-a1b7-d72a109751cb?jobSite=LinkedIn&src=linkedin",

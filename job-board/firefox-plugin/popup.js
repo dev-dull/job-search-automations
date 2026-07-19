@@ -316,6 +316,40 @@ async function extractCurrentTab() {
     }
   }
 
+  // iCIMS: the plain job page is a JS shell (no server-side JSON-LD, generic
+  // DOM), but the same URL with ?in_iframe=1 is fully server-rendered and
+  // embeds a complete schema.org JobPosting. Re-fetch that variant and parse
+  // its ld+json — host permission for *.icims.com lets the popup fetch it.
+  if (job.ats === "icims" && /\/jobs\/\d+\//.test(jobUrl.pathname)) {
+    try {
+      const sep = jobUrl.search ? "&" : "?";
+      const r = await fetch(`${jobUrl.origin}${jobUrl.pathname}${jobUrl.search}${sep}in_iframe=1`);
+      if (r.ok) {
+        const html = await r.text();
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        for (const s of doc.querySelectorAll('script[type="application/ld+json"]')) {
+          let data;
+          try { data = JSON.parse(s.textContent); } catch { continue; }
+          for (const item of Array.isArray(data) ? data : [data]) {
+            const t = item["@type"];
+            if ((Array.isArray(t) ? t.includes("JobPosting") : t === "JobPosting")) {
+              const tmp = document.createElement("div");
+              tmp.innerHTML = item.description || "";
+              const plain = (tmp.innerText || tmp.textContent || "").replace(/\s+/g, " ").trim();
+              if (plain.length > 200) {
+                job.title = (item.title || "").trim() || job.title;
+                job.description = plain;
+                job.posted_at = (item.datePosted || "").slice(0, 10) || job.posted_at;
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("iCIMS in_iframe fetch failed; falling back to page scrape:", err);
+    }
+  }
+
   return job;
 }
 

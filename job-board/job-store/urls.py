@@ -26,6 +26,8 @@ _TRACKING_PARAMS = {
     "utm_content", "ref", "source", "lever-origin", "lever-source",
     # Rippling inbound-link tracking (?jobSite=LinkedIn&src=linkedin).
     "src", "jobSite",
+    # iCIMS inbound-source tracking, plus our own iframe render flag.
+    "iis", "iisn", "in_iframe", "ss",
 }
 
 # Path patterns that carry a Greenhouse posting id directly in the URL path
@@ -143,6 +145,14 @@ def compute_dedupe_key(url):
         m = _LEVER_PATH.match(u.path or "")
         if m:
             return f"lever:{m.group(1).split('-')[0]}"
+
+    # iCIMS: tenant subdomain + numeric job id on the path
+    # (careers-<tenant>.icims.com/jobs/<id>/<slug>/job). Slug and inbound
+    # iis/iisn tracking vary; tenant + id identify the posting.
+    if netloc.endswith(".icims.com"):
+        m = re.match(r"^/jobs/(\d+)/", u.path or "")
+        if m:
+            return f"icims:{netloc.split('.')[0]}:{m.group(1)}"
 
     # Rippling: slug + posting uuid on the path; inbound-link tracking params
     # (jobSite/src) are stripped by canonicalize_url, but keying on the uuid
