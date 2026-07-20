@@ -1,7 +1,7 @@
 "use strict";
 
 // Open the options page the first time the extension is installed so the user
-// is prompted to paste an API key + resume.
+// is prompted to set the backend URL (the only setting the thin client has).
 browser.runtime.onInstalled.addListener(({ reason }) => {
   if (reason === "install") {
     browser.runtime.openOptionsPage();
@@ -50,6 +50,22 @@ paintBriefcaseIcon();
 // popup closes, and `tab.url` is sometimes briefly empty / storage reads can
 // momentarily miss. Without `allowClear=false`, those transient signals
 // would wipe a perfectly-good badge.
+// Backend misses, remembered briefly. Without this, ordinary browsing hammers
+// the backend: every tab event on an unscored page (including the
+// changeInfo.url + status:complete double-fire) triggered a fresh lookup, and
+// 404s were never cached (#64). In-memory is fine — an event-page unload just
+// means a few repeat lookups.
+const NEGATIVE_TTL_MS = 10 * 60 * 1000;
+const negativeLookups = new Map();   // canonical key -> expiry (epoch ms)
+
+function _pruneNegative() {
+  if (negativeLookups.size < 500) return;
+  const now = Date.now();
+  for (const [k, until] of negativeLookups) {
+    if (until <= now) negativeLookups.delete(k);
+  }
+}
+
 async function updateBadgeForTab(tab, { allowClear = true } = {}) {
   if (!tab?.id || !tab.url) return;
 
@@ -60,14 +76,23 @@ async function updateBadgeForTab(tab, { allowClear = true } = {}) {
 
   // Cache first. On miss, ask the backend — covers (a) entries lost to URL
   // canonicalization, (b) jobs scored on another browser, (c) freshly-installed
-  // extension instances that haven't seen this URL yet.
+  // extension instances that haven't seen this URL yet. Known-miss URLs skip
+  // the round-trip until their negative-cache entry expires.
   let entry = await getCachedScore(tab.url);
   if (!entry) {
-    const { backendUrl } = await browser.storage.local.get(["backendUrl"]);
-    if (backendUrl) {
-      entry = await lookupBackendScore(tab.url, backendUrl);
-      if (entry) {
-        try { await setCachedScore(tab.url, entry); } catch { /* ignore */ }
+    const negKey = canonicalizeJobUrl(tab.url);
+    const until = negativeLookups.get(negKey);
+    if (!(until && until > Date.now())) {
+      const { backendUrl } = await browser.storage.local.get(["backendUrl"]);
+      if (backendUrl) {
+        entry = await lookupBackendScore(tab.url, backendUrl);
+        if (entry) {
+          negativeLookups.delete(negKey);
+          try { await setCachedScore(tab.url, entry); } catch { /* ignore */ }
+        } else {
+          _pruneNegative();
+          negativeLookups.set(negKey, Date.now() + NEGATIVE_TTL_MS);
+        }
       }
     }
   }

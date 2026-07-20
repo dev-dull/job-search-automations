@@ -285,20 +285,34 @@ async function lookupBackendScore(rawUrl, backendUrl) {
 async function setCachedScore(rawUrl, entry) {
   const key = canonicalizeJobUrl(rawUrl);
   if (!key || key === "manual-paste") return;
-  const data = await browser.storage.local.get(SCORE_CACHE_KEY);
-  const cache = data[SCORE_CACHE_KEY] || {};
-  cache[key] = { ...entry, timestamp: Date.now() };
+  // Preserve a caller-provided timestamp (backend lookups carry the real
+  // scored_at, #58); stamp write-time only when absent.
+  const stamped = { ...entry, timestamp: entry.timestamp ?? Date.now() };
 
-  // Evict oldest entries beyond the cap to keep storage bounded.
-  const keys = Object.keys(cache);
-  if (keys.length > SCORE_CACHE_MAX) {
-    keys.sort((a, b) => (cache[a].timestamp || 0) - (cache[b].timestamp || 0));
-    for (const k of keys.slice(0, keys.length - SCORE_CACHE_MAX)) {
-      delete cache[k];
+  const write = async () => {
+    const data = await browser.storage.local.get(SCORE_CACHE_KEY);
+    const cache = data[SCORE_CACHE_KEY] || {};
+    cache[key] = stamped;
+    // Evict oldest entries beyond the cap to keep storage bounded.
+    const keys = Object.keys(cache);
+    if (keys.length > SCORE_CACHE_MAX) {
+      keys.sort((a, b) => (cache[a].timestamp || 0) - (cache[b].timestamp || 0));
+      for (const k of keys.slice(0, keys.length - SCORE_CACHE_MAX)) {
+        delete cache[k];
+      }
     }
-  }
+    await browser.storage.local.set({ [SCORE_CACHE_KEY]: cache });
+  };
 
-  await browser.storage.local.set({ [SCORE_CACHE_KEY]: cache });
+  // storage.local has no transactions, so popup and background can interleave
+  // whole-object writes and drop each other's entries (#64). Verify-and-repair:
+  // write, re-read, and rewrite once if a concurrent snapshot clobbered us —
+  // shrinks the loss window from the whole scoring round-trip to microseconds.
+  await write();
+  const check = await browser.storage.local.get(SCORE_CACHE_KEY);
+  if (!(check[SCORE_CACHE_KEY] || {})[key]) {
+    await write();
+  }
 }
 
 // Map a 0-100 score to a recommendation bucket and matching badge color. Kept
