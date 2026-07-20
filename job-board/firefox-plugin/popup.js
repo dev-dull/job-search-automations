@@ -111,6 +111,49 @@ function extractInPage() {
     }
   })();
 
+  // Next.js App Router sites (Kula: careers.kula.ai) ship neither ld+json nor
+  // __NEXT_DATA__ — the posting lives in RSC flight chunks (self.__next_f).
+  // The payload carries "job_description":"$<id>" referencing a T-blob row
+  // (`<id>:T<hexlen>,<html>`). Without this, the generic longest-text picker
+  // grabs the rendered APPLICATION FORM that sits beside the JD.
+  const flight = (() => {
+    if (ld || nd) return null;
+    const parts = [];
+    try {
+      // Firefox content scripts can read page globals via wrappedJSObject —
+      // the already-unescaped flight array, when page JS has run.
+      const nf = window.wrappedJSObject && window.wrappedJSObject.self &&
+                 window.wrappedJSObject.self.__next_f;
+      if (nf && nf.length) {
+        for (const e of nf) {
+          if (e && typeof e[1] === "string") parts.push(e[1]);
+        }
+      }
+    } catch { /* fall through to script parsing */ }
+    if (!parts.length) {
+      for (const sc of document.querySelectorAll("script")) {
+        const t = sc.textContent || "";
+        if (!t.includes("__next_f.push")) continue;
+        for (const m of t.matchAll(/__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/g)) {
+          try { parts.push(JSON.parse(m[1])); } catch { /* skip chunk */ }
+        }
+      }
+    }
+    if (!parts.length) return null;
+    const joined = parts.join("");
+    const ref = joined.match(/"(?:job_description|jobDescription)":"\$(\w+)"/);
+    if (!ref) return null;
+    const row = joined.match(new RegExp("(?:^|\n)" + ref[1] + ":T([0-9a-f]+),"));
+    if (!row) return null;
+    const start = row.index + row[0].length;
+    const blobLen = parseInt(row[1], 16);
+    const blob = joined.slice(start, start + blobLen);
+    const tmp = document.createElement("div");
+    tmp.innerHTML = blob;
+    const text = (tmp.innerText || tmp.textContent || "").replace(/\s+/g, " ").trim();
+    return text.length >= 200 ? { description: text } : null;
+  })();
+
   // Title extraction is ATS-specific-first, then generic fallback. Two known
   // traps the specific selectors avoid:
   //   - LinkedIn split-pane (`/jobs/collections/.../?currentJobId=N`) renders a
@@ -220,6 +263,7 @@ function extractInPage() {
   const description =
     (ld?.description && ld.description.length >= 200) ? ld.description
       : (nd?.description && nd.description.length >= 200) ? nd.description
+      : (flight?.description) ? flight.description
       : domDescription;
 
   // If this page embeds Greenhouse via their JS embed (`<script src=
