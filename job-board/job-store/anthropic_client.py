@@ -281,9 +281,12 @@ def score_job(*, description: str, url: str | None = None,
     # output_config is the structured-outputs parameter; it's not in every
     # version of the SDK as a named kwarg, so route it via extra_body for
     # forward-compat.
+    # 4096: the #72 fields (gate evidence quotes, strong matches, required-miss
+    # lists) pushed long-JD responses past the old 2048 cap, truncating the JSON
+    # mid-string.
     response = _client().messages.create(
         model=MODEL,
-        max_tokens=2048,
+        max_tokens=4096,
         temperature=0,
         system=system,
         messages=[
@@ -309,6 +312,11 @@ def score_job(*, description: str, url: str | None = None,
     )
     if not text_block:
         raise RuntimeError("Anthropic response contained no text block.")
+    if response.stop_reason == "max_tokens":
+        # Truncated JSON would otherwise surface as a confusing decode error.
+        raise RuntimeError(
+            "Anthropic response hit max_tokens and was truncated; "
+            "the schema output needs a higher cap.")
 
     try:
         fit = json.loads(text_block)
