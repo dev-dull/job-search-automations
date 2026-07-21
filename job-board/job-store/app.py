@@ -245,6 +245,7 @@ def _with_live_rank(jobs):
             discovered_at=job.get("discovered_at"),
             desirability_score=job.get("desirability_score"),
             gated=bool(job.get("gated")),
+            company=job.get("company"),
         )
     return jobs
 
@@ -356,6 +357,7 @@ def score_job():
             discovered_at=existing.get("discovered_at"),
             desirability_score=existing.get("desirability_score"),
             gated=bool(existing.get("gated")),
+            company=existing.get("company"),
         )
         return jsonify({
             "id": existing["id"],
@@ -405,6 +407,7 @@ def score_job():
                 discovered_at=existing.get("discovered_at"),
                 desirability_score=existing.get("desirability_score"),
                 gated=bool(existing.get("gated")),
+                company=existing.get("company"),
             )
             return jsonify({
                 "id": existing["id"],
@@ -469,6 +472,7 @@ def score_job():
         discovered_at=datetime.utcnow().isoformat(),
         desirability_score=desirability_score,
         gated=bool(gated),
+        company=company,
     )
     new_status = "ranked" if fit_score is not None else "discovered"
     # update_rank_score only applies the status to discovered/ranked rows —
@@ -687,6 +691,7 @@ def rerank_all():
             discovered_at=job.get("discovered_at"),
             desirability_score=job.get("desirability_score"),
             gated=bool(job.get("gated")),
+            company=job.get("company"),
         )
         db.update_rank_score(job["id"], rank)
     return redirect(url_for("index"))

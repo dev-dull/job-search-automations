@@ -136,6 +136,7 @@ def list_candidates(*, fit_min: float, rank_min: float) -> list[tuple[float, dic
             discovered_at=d.get("discovered_at"),
             desirability_score=d.get("desirability_score"),
             gated=bool(d.get("gated")),
+            company=d.get("company"),
         )
         if rank is None or rank <= rank_min:
             continue

@@ -50,6 +50,7 @@ job-store reads these env vars:
 | `ANTHROPIC_MODEL` | no | defaults to `claude-haiku-4-5` |
 | `GROWTH_KEYWORDS` | no | comma-separated phrases the scorer rewards (career-growth signal) |
 | `PREFERENCES_PATH` | no | path to a free-text file describing the kind of work you want. Enables a separate **desirability** score ("do I want it", distinct from fit's "am I a match") that's blended into ranking. Read verbatim, any text format. Without it, scoring and ranking use fit alone. |
+| `COMPANY_ADJUSTMENTS_PATH` | no | path to a per-company rank-nudge file (`Company Name: -25  # note` per line, `#` comments). Applies deterministic outside-view adjustments (layoff history, review-site reality) at rank time — no LLM calls. Keys match case-insensitively, including as substrings of the stored company name. Keep this file in your private repo alongside your preferences. |
 | `JOBS_DB_PATH` | no | SQLite DB location; defaults next to the code (the container sets `/data/jobs.db`) |
 | `EXTENSION_DIST_DIR` | no | dir holding the signed Firefox `.xpi` served at `/extension`. Released images bake it in at `/app/extension`; local `flask run` defaults to `firefox-plugin/dist/` |
 

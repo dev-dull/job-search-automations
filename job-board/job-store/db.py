@@ -430,7 +430,7 @@ def platform_stats_summary():
 def all_jobs_for_rerank():
     with cursor() as conn:
         return [dict(r) for r in conn.execute(
-            "SELECT id, fit_score, desirability_score, gated, posted_at, "
+            "SELECT id, company, fit_score, desirability_score, gated, posted_at, "
             "discovered_at, ats_platform FROM jobs WHERE fit_score IS NOT NULL"
         ).fetchall()]
 
@@ -440,7 +440,7 @@ def top_open_missing_desirability(limit):
     worth re-scoring first when backfilling the desirability axis (rescore.py)."""
     with cursor() as conn:
         return [dict(r) for r in conn.execute(
-            "SELECT id, url, description, ats_platform, posted_at, discovered_at "
+            "SELECT id, url, company, description, ats_platform, posted_at, discovered_at "
             "FROM jobs WHERE status IN ('discovered', 'ranked') "
             "AND fit_score IS NOT NULL AND desirability_score IS NULL "
             "ORDER BY fit_score DESC LIMIT ?",
@@ -449,13 +449,15 @@ def top_open_missing_desirability(limit):
 
 
 def top_open_missing_gates(limit):
-    """Open rows not yet scored under the gated schema (#72) — analysis_json
+    """Rows not yet scored under the gated schema (#72) — analysis_json
     predates gate_failures. Ordered by current rank so the visible top of the
-    board converges to the new ordering first (rescore.py --gate-backfill)."""
+    board converges to the new ordering first (rescore.py --gate-backfill).
+    Applied rows are included: they're the label set for backtest_rank.py and
+    need new-schema data to be meaningful (the #51 guard keeps their status)."""
     with cursor() as conn:
         return [dict(r) for r in conn.execute(
-            "SELECT id, url, description, ats_platform, posted_at, discovered_at "
-            "FROM jobs WHERE status IN ('discovered', 'ranked') "
+            "SELECT id, url, company, description, ats_platform, posted_at, discovered_at "
+            "FROM jobs WHERE status IN ('discovered', 'ranked', 'applied') "
             "AND fit_score IS NOT NULL "
             'AND (analysis_json IS NULL OR analysis_json NOT LIKE \'%"gate_failures"%\') '
             "ORDER BY rank_score DESC LIMIT ?",

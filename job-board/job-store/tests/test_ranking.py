@@ -15,6 +15,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import ranking  # noqa: E402
 
+# The pending-desirability discount keys off PREFERENCES_PATH; keep the
+# baseline tests deterministic regardless of the dev machine's env.
+os.environ.pop("PREFERENCES_PATH", None)
+os.environ.pop(ranking.COMPANY_ADJUSTMENTS_ENV, None)
+
 # Few outcomes -> platform_factor parked (g_applied below the threshold).
 PARKED = (0, 0, 0.0, 9)
 # Enough outcomes -> platform_factor active.
@@ -111,6 +116,76 @@ class GateFloorTest(unittest.TestCase):
 
     def test_default_is_ungated(self):
         self.assertEqual(ranking.compute_rank_score(80, _iso(0), PARKED), 80.0)
+
+
+class PendingDesirabilityTest(unittest.TestCase):
+    """A missing desirability score with preferences configured means the row
+    hasn't been evaluated on the axis that drives ranking — discount it rather
+    than let it compete on fit alone."""
+
+    def setUp(self):
+        os.environ["PREFERENCES_PATH"] = "/nonexistent/prefs.md"
+        self.addCleanup(os.environ.pop, "PREFERENCES_PATH", None)
+
+    def test_pending_rows_are_discounted(self):
+        pending = ranking.compute_rank_score(92, _iso(0), PARKED)
+        self.assertEqual(pending,
+                         round(92 * ranking.PENDING_DESIRABILITY_FACTOR, 2))
+
+    def test_evaluated_row_outranks_pending_at_same_fit(self):
+        pending = ranking.compute_rank_score(80, _iso(0), PARKED)
+        evaluated = ranking.compute_rank_score(80, _iso(0), PARKED,
+                                               desirability_score=70)
+        self.assertGreater(evaluated, pending)
+
+    def test_no_preferences_means_no_discount(self):
+        os.environ.pop("PREFERENCES_PATH", None)
+        self.assertEqual(ranking.compute_rank_score(92, _iso(0), PARKED), 92.0)
+
+
+class ClampTest(unittest.TestCase):
+    def test_platform_factor_cannot_push_rank_above_100(self):
+        # A hot platform (factor up to 1.25) on a high base must not produce
+        # an above-scale rank (one real row hit 117).
+        hot = (100, 100, 0.10, 50)
+        self.assertLessEqual(
+            ranking.compute_rank_score(95, _iso(0), hot, desirability_score=95),
+            100.0)
+
+
+class CompanyAdjustmentTest(unittest.TestCase):
+    """COMPANY_ADJUSTMENTS_PATH: deterministic per-company rank nudges from a
+    user-maintained file (outside-view reality the JD can't provide)."""
+
+    def _notes(self, text):
+        import tempfile
+        f = tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False)
+        f.write(text)
+        f.close()
+        os.environ[ranking.COMPANY_ADJUSTMENTS_ENV] = f.name
+        self.addCleanup(os.environ.pop, ranking.COMPANY_ADJUSTMENTS_ENV, None)
+        self.addCleanup(os.remove, f.name)
+
+    def test_exact_and_substring_match(self):
+        self._notes("# outside-view notes\nUnqork: -25  # layoffs\nFivetran: +10\n")
+        self.assertEqual(ranking.company_adjustment("Unqork"), -25.0)
+        self.assertEqual(ranking.company_adjustment("unqork"), -25.0)
+        self.assertEqual(
+            ranking.company_adjustment("Fivetran (merged with dbt Labs)"), 10.0)
+        self.assertEqual(ranking.company_adjustment("SomeoneElse"), 0.0)
+
+    def test_adjustment_moves_rank(self):
+        self._notes("BadCo: -30\n")
+        plain = ranking.compute_rank_score(80, _iso(0), PARKED,
+                                           desirability_score=80)
+        nudged = ranking.compute_rank_score(80, _iso(0), PARKED,
+                                            desirability_score=80,
+                                            company="BadCo")
+        self.assertEqual(nudged, plain - 30)
+
+    def test_no_file_is_neutral(self):
+        os.environ.pop(ranking.COMPANY_ADJUSTMENTS_ENV, None)
+        self.assertEqual(ranking.company_adjustment("Anything"), 0.0)
 
 
 class PlatformFactorTest(unittest.TestCase):

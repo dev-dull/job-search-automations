@@ -79,7 +79,7 @@ def main(argv=None) -> int:
         rank = ranking.compute_rank_score(
             fit, r["posted_at"], db.get_platform_stats(r["ats_platform"]),
             discovered_at=r["discovered_at"], desirability_score=des,
-            gated=gated)
+            gated=gated, company=r["company"])
         db.update_rank_score(r["id"], rank)
         done += 1
         print(f"  ~ id={r['id']} fit={fit} desirability={des} rank={rank}")
