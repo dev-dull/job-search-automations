@@ -443,9 +443,19 @@ def top_open_missing_desirability(limit):
 
 def all_job_urls():
     """Every stored job URL. Backs GET /jobs/urls, which the poller uses for
-    dedupe / stop-when-seen without direct DB access."""
+    dedupe without direct DB access."""
     with cursor() as conn:
         return [r["url"] for r in conn.execute("SELECT url FROM jobs").fetchall()]
+
+
+def all_job_dedupe_keys():
+    """Every stored dedupe key — authoritative since init_db re-keys stale
+    formats on startup. Backs the poller's skip-when-seen matching (#71), which
+    must recognize a posting regardless of which URL variant first stored it."""
+    with cursor() as conn:
+        return [r["dedupe_key"] for r in conn.execute(
+            "SELECT dedupe_key FROM jobs WHERE dedupe_key IS NOT NULL"
+        ).fetchall()]
 
 
 # ---------------------------------------------------------------------------

@@ -931,8 +931,10 @@ LOCATION_DENYLIST_KEY = "location_denylist"
 
 @app.route("/jobs/urls", methods=["GET"])
 def jobs_urls():
-    """All stored job URLs, for the poller's dedupe / stop-when-seen."""
-    return jsonify({"urls": db.all_job_urls()})
+    """Stored job URLs and dedupe keys for the poller. Keys are the seen-set
+    for skip-when-seen (#71); urls remain for older poller builds."""
+    return jsonify({"urls": db.all_job_urls(),
+                    "dedupe_keys": db.all_job_dedupe_keys()})
 
 
 @app.route("/settings/locations", methods=["GET"])

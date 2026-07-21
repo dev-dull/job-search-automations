@@ -105,10 +105,9 @@ def list_jobs(identifier: dict[str, Any]) -> list[dict[str, Any]]:
     """Return postings as lightweight stubs (no description, no posted date —
     both live on the job page and are filled in by `fetch_description`).
 
-    NOTE: the board API documents no ordering and items carry no date, so
-    newest-first cannot be guaranteed — the poller's stop-when-seen may stop
-    early on boards where order shifts. Rippling boards are small (tens of
-    postings), which bounds the damage.
+    NOTE: the board API documents no ordering and items carry no date; the
+    poller's skip-when-seen walk (#71) makes that safe — seen postings are
+    skipped rather than terminating the walk.
     """
     slug = (identifier or {}).get("slug")
     if not slug:

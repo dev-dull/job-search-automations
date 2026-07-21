@@ -58,7 +58,7 @@ Only rows flagged `Applied=TRUE` are imported.
 .venv/bin/python poller.py --set-locations "United States,USA,US-,Remote,Americas"
 ```
 
-The poller is a **pure HTTP client** of job-store — it holds no DB access. It reads targets (`/companies.json`), existing URLs (`/jobs/urls`), and location settings (`/settings/locations`) over HTTP, walks each adapter's response newest-first, filters by deny list and location, lazy-fetches descriptions, POSTs survivors to `/jobs/score`, and stamps `last_polled` via `/companies/<id>/polled`. It stops at the first URL it already has, then moves to the next target. This lets it run anywhere with network reach to the backend (e.g. the Helm chart's CronJob).
+The poller is a **pure HTTP client** of job-store — it holds no DB access. It reads targets (`/companies.json`), existing URLs (`/jobs/urls`), and location settings (`/settings/locations`) over HTTP, walks each adapter's full response, skips already-seen postings (matched by dedupe key, so plugin-discovered URL variants count — #71), filters by deny list and location, lazy-fetches descriptions, POSTs survivors to `/jobs/score`, and stamps `last_polled` via `/companies/<id>/polled`. This lets it run anywhere with network reach to the backend (e.g. the Helm chart's CronJob).
 
 The backend URL comes from `--backend` or the `JOB_STORE_URL` env var (default `http://127.0.0.1:5000`). `--max-new N` caps per-target spend on first polls of big tenants.
 

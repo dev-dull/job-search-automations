@@ -1,7 +1,8 @@
 """Targeted-company poller.
 
 For each `company_targets` row whose `ats_platform` has an adapter, fetch the
-current list of openings, dedupe against existing `jobs.url`, filter titles
+current list of openings, skip already-seen postings (matched by dedupe key,
+#71), filter titles
 against the target's `deny_list`, and POST the survivors to `/jobs/score`
 (without `fit_score`, so the backend's server-side Claude scorer runs).
 
@@ -32,6 +33,7 @@ import urllib.error
 import urllib.request
 
 from adapters import ADAPTERS
+from urls import compute_dedupe_key
 
 
 DEFAULT_BACKEND = os.environ.get("JOB_STORE_URL", "http://127.0.0.1:5000")
@@ -89,8 +91,15 @@ def _post_json(backend: str, path: str, payload: dict) -> dict:
         return json.load(resp)
 
 
-def _existing_urls(backend: str) -> set[str]:
-    return set(_get_json(backend, "/jobs/urls").get("urls") or [])
+def _seen_keys(backend: str) -> set[str]:
+    """Dedupe keys of every stored posting. Prefers the backend's keys
+    (authoritative — the DB re-keys stale formats at startup); computes them
+    from URLs when talking to an older backend."""
+    data = _get_json(backend, "/jobs/urls")
+    keys = data.get("dedupe_keys")
+    if keys is None:
+        keys = [compute_dedupe_key(u) for u in (data.get("urls") or [])]
+    return {k for k in keys if k}
 
 
 def _is_denied(title: str, deny_list: list[str]) -> str | None:
@@ -206,7 +215,7 @@ def _exit_code(summaries: list[dict]) -> int:
     return 1 if attempted and adapter_failures == attempted else 0
 
 
-def poll_target(target: dict, *, backend: str, existing_urls: set[str],
+def poll_target(target: dict, *, backend: str, seen_keys: set[str],
                 dry_run: bool, max_new: int | None,
                 location_allowlist: list[str],
                 location_denylist: list[str]) -> dict:
@@ -226,7 +235,7 @@ def poll_target(target: dict, *, backend: str, existing_urls: set[str],
         "errors": 0,
         "adapter_error": False,
         "skipped": 0,
-        "stopped_at_seen": False,
+        "skipped_seen": 0,
         "max_new_reached": False,
         "error_detail": [],
     }
@@ -259,13 +268,15 @@ def poll_target(target: dict, *, backend: str, existing_urls: set[str],
     for job in jobs:
         if not job.get("url") or not job.get("title"):
             continue
-        # Stop-when-seen: adapters return newest-first, so the first time we
-        # hit a URL we already have, every job below it is older and either
-        # known or deny-listed — no point continuing.
-        if job["url"] in existing_urls:
-            summary["stopped_at_seen"] = True
-            print(f"    stop [already seen] {job['title']}")
-            break
+        # Skip-when-seen (#71): listings interleave re-bumped already-seen
+        # postings with genuinely new ones (Workday's "Most Recent" bumping)
+        # or document no ordering at all (Rippling), so stopping at the first
+        # seen item permanently hid everything below it (the JR2019408 miss).
+        # Skipping is nearly free — it happens before the detail fetch — and
+        # matching by dedupe key counts plugin-discovered URL variants as seen.
+        if compute_dedupe_key(job["url"]) in seen_keys:
+            summary["skipped_seen"] += 1
+            continue
 
         denied = _is_denied(job["title"], deny_list)
         if denied:
@@ -313,7 +324,7 @@ def poll_target(target: dict, *, backend: str, existing_urls: set[str],
         ok, result = _post_score(backend, job, name)
         if ok:
             summary["scored"] += 1
-            existing_urls.add(job["url"])
+            seen_keys.add(compute_dedupe_key(job["url"]))
             fs = result.get("fit_score")
             print(f"    scored fit={fs}  {job['title']}")
         else:
@@ -382,7 +393,7 @@ def main(argv: list[str] | None = None) -> int:
         print("no company_targets configured.", file=sys.stderr)
         return 1
 
-    existing = _existing_urls(backend)
+    seen = _seen_keys(backend)
     backend_allow, backend_deny = _load_location_lists(backend)
     location_allowlist = (
         [p.strip() for p in args.locations.split(",") if p.strip()]
@@ -393,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.deny_locations else backend_deny
     )
     print(f"Polling {len(targets)} target(s)  (dry-run={args.dry_run}, backend={backend})")
-    print(f"Existing jobs in DB: {len(existing)}")
+    print(f"Known postings (dedupe keys): {len(seen)}")
     if location_allowlist:
         print(f"Location allowlist: {', '.join(location_allowlist)}")
     if location_denylist:
@@ -403,7 +414,7 @@ def main(argv: list[str] | None = None) -> int:
     summaries = []
     for t in targets:
         summaries.append(poll_target(t, backend=args.backend,
-                                     existing_urls=existing,
+                                     seen_keys=seen,
                                      dry_run=args.dry_run,
                                      max_new=args.max_new,
                                      location_allowlist=location_allowlist,
@@ -417,11 +428,13 @@ def main(argv: list[str] | None = None) -> int:
     total_errors = sum(s["errors"] for s in summaries)
     total_skipped = sum(s["skipped"] for s in summaries)
     total_out_of_region = sum(s["out_of_region"] for s in summaries)
+    total_seen = sum(s["skipped_seen"] for s in summaries)
 
     print()
     print(f"Done in {elapsed:.1f}s.  found={total_found}  new={total_new}  "
-          f"denied={total_denied}  out_of_region={total_out_of_region}  "
-          f"scored={total_scored}  skipped={total_skipped}  errors={total_errors}")
+          f"seen={total_seen}  denied={total_denied}  "
+          f"out_of_region={total_out_of_region}  scored={total_scored}  "
+          f"skipped={total_skipped}  errors={total_errors}")
     if total_errors:
         print("\nErrors:")
         for s in summaries:
