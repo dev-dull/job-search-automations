@@ -1,9 +1,9 @@
 """Server-side Anthropic scoring for job-store.
 
-Mirrors the prompt and schema used by `firefox-plugin/popup.js` so plugin-mode
-and poller-mode scoring stay aligned. The plugin keeps calling Anthropic
-directly for now (`fit_score` is in the POST payload); when a caller omits
-`fit_score`, `app.py` falls through to `score_job()` here.
+The single scoring path for every surface (plugin, poller, rescore): callers
+POST a JD to /jobs/score and `app.py` calls `score_job()` here. Scoring is one
+Anthropic call per posting with a structured-output schema; the resume,
+preferences, and prompt live only on this side.
 
 Configuration (env vars):
 - ANTHROPIC_API_KEY (required)
@@ -34,14 +34,25 @@ except ImportError as e:
 MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5")
 MAX_DESCRIPTION_CHARS = 12000
 
-# Schema kept in lockstep with `firefox-plugin/popup.js`'s FIT_SCHEMA. Edit
-# both files together when the prompt or output shape changes.
+# Server-side scoring schema. Keep the field list in lockstep with
+# _format_user_message's prompt lines (tests/test_anthropic_schema.py guards
+# the desirability half of that).
 FIT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "candidate_score": {
             "type": "integer",
-            "description": "A score between 1 and 100 inclusive for how well the resume matches the job description.",
+            "description": "A score between 1 and 100 inclusive for how well the resume matches the job description. Weight specific evidence over keyword density: an exact match on a tool the posting names (especially one marked preferred or required) that the resume demonstrates counts far more than generic keyword overlap, and a probable miss on a REQUIRED qualification lowers the score rather than being masked by surrounding keywords.",
+        },
+        "candidate_strong_matches": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Named tools, technologies, or title families the posting explicitly asks for (preferred or required) that the resume concretely demonstrates — the strongest screen signals. Empty if none.",
+        },
+        "required_qualification_misses": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Requirements the posting marks as required that the resume likely does NOT demonstrate. Empty if none.",
         },
         "career_growth_score": {
             "type": "integer",
@@ -73,6 +84,7 @@ FIT_SCHEMA: dict[str, Any] = {
     "required": [
         "candidate_score", "career_growth_score", "candidate_explanation",
         "candidate_strengths", "candidate_deficiencies",
+        "candidate_strong_matches", "required_qualification_misses",
         "job_description_score", "job_company_name",
     ],
     "additionalProperties": False,
@@ -89,7 +101,26 @@ SYSTEM_INSTRUCTIONS = (
 _DESIRABILITY_PROPERTIES: dict[str, Any] = {
     "desirability_score": {
         "type": "integer",
-        "description": "A score between 1 and 100 for how well this role matches the kind of work the candidate says they want (see their stated preferences), independent of whether they are qualified for it. Weigh the candidate's sustainable-pace preferences heavily: lower the score for red-flag intensity signals and raise it for green-flag structural-rest signals.",
+        "description": "A score between 1 and 100 for how well this role matches the kind of work the candidate says they want (see their stated preferences), independent of whether they are qualified for it. Weigh the candidate's sustainable-pace preferences heavily: lower the score for red-flag intensity signals and raise it for green-flag structural-rest signals. Trust STRUCTURAL signals (mandatory or minimum PTO, shutdown weeks, profitability, long median tenure, no-meeting days) far more than aspirational copy ('we value work-life balance') — job-description text is marketing.",
+    },
+    "gate_failures": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "gate": {
+                    "type": "string",
+                    "description": "Short gate name: level, location, onsite, timezone, role-family, required-qualification, or similar.",
+                },
+                "evidence": {
+                    "type": "string",
+                    "description": "A short quote or near-quote from the posting proving the gate fails.",
+                },
+            },
+            "required": ["gate", "evidence"],
+            "additionalProperties": False,
+        },
+        "description": "HARD deal-breakers from the candidate's stated preferences (Deal-breakers and Must-haves) that this posting clearly fails: wrong level band, ineligible location/timezone, onsite requirement, excluded role family, or a required qualification the candidate lacks. Fail a gate ONLY on clear evidence in the posting — quote it. Empty array when nothing clearly fails; ambiguity is not a failure.",
     },
     "desirability_explanation": {
         "type": "string",
@@ -107,7 +138,7 @@ def _schema_with_desirability() -> dict[str, Any]:
     """FIT_SCHEMA plus the desirability fields (used when preferences exist)."""
     s = json.loads(json.dumps(FIT_SCHEMA))      # deep copy
     s["properties"].update(_DESIRABILITY_PROPERTIES)
-    s["required"] = s["required"] + ["desirability_score", "desirability_explanation", "pace_signals"]
+    s["required"] = s["required"] + ["desirability_score", "desirability_explanation", "pace_signals", "gate_failures"]
     return s
 
 
@@ -178,7 +209,9 @@ def _format_user_message(*, description: str, url: str | None,
              "a senior infrastructure / build-and-release engineer."
     )
     fields = [
-        "- candidate_score: a score between 1 and 100 for how well the resume matches the job description.",
+        "- candidate_score: a score between 1 and 100 for how well the resume matches the job description. Weight specific evidence over keyword density: an exact match on a named tool the posting asks for (especially marked preferred/required) that the resume demonstrates counts far more than generic keyword overlap; a probable miss on a REQUIRED qualification lowers the score rather than being masked by surrounding keywords.",
+        "- candidate_strong_matches: a list of named tools/technologies/title families the posting explicitly asks for that the resume concretely demonstrates — the strongest screen signals. Empty list if none.",
+        "- required_qualification_misses: a list of requirements the posting marks as required that the resume likely does not demonstrate. Empty list if none.",
         keywords_line,
         "- candidate_explanation: an explanation of the score no longer than 250 words.",
         "- candidate_deficiencies: a list of deficiencies in the resume that the candidate likely possesses, but could be better highlighted in the resume.",
@@ -188,9 +221,10 @@ def _format_user_message(*, description: str, url: str | None,
     ]
     if has_preferences:
         fields += [
-            "- desirability_score: a score between 1 and 100 for how well this role matches the kind of work the candidate says they want (see <preferences> in the system context), independent of whether they are qualified for it. Weigh the candidate's sustainable-pace preferences heavily: reduce the score for red-flag intensity signals (e.g. 'fast-paced', 'ship big things every week', on-call as a core duty, hypergrowth burn) and raise it for green-flag structural-rest signals (e.g. minimum/mandatory PTO, profitability, genuinely async/remote-first).",
+            "- desirability_score: a score between 1 and 100 for how well this role matches the kind of work the candidate says they want (see <preferences> in the system context), independent of whether they are qualified for it. Weigh the candidate's sustainable-pace preferences heavily: reduce the score for red-flag intensity signals (e.g. 'fast-paced', 'ship big things every week', on-call as a core duty, hypergrowth burn) and raise it for green-flag structural-rest signals (e.g. minimum/mandatory PTO, profitability, genuinely async/remote-first). Trust STRUCTURAL signals (mandatory PTO, shutdown weeks, profitability, long tenure) far more than aspirational copy — job-description text is marketing.",
             "- desirability_explanation: a brief explanation of desirability_score, no longer than 150 words; note any pace/sustainability factors that moved the score.",
             "- pace_signals: a list of the specific pace/sustainability tells from the posting, each prefixed with 'RED: ' or 'GREEN: ' per the candidate's sustainable-pace preferences; an empty list if none.",
+            "- gate_failures: a list of {gate, evidence} objects for HARD deal-breakers from the candidate's Deal-breakers/Must-haves that this posting clearly fails (wrong level band, ineligible location/timezone, onsite requirement, excluded role family, a required qualification the candidate lacks). Fail a gate ONLY on clear evidence in the posting and quote that evidence; ambiguity is NOT a failure. Empty list when nothing clearly fails.",
         ]
     instruction = "\n".join([
         "Compare the resume and job description with the goal of helping the candidate tailor their resume for the position.",

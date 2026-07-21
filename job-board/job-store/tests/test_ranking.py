@@ -85,6 +85,34 @@ class DesirabilityBlendTest(unittest.TestCase):
         self.assertAlmostEqual(got, w * 80 + (1 - w) * 40, places=2)
 
 
+class GateFloorTest(unittest.TestCase):
+    """#72 phase 1: a failed hard deal-breaker floors rank into a low band —
+    no amount of fit or desirability buys back a disqualification."""
+
+    def test_gated_high_fit_ranks_below_everything_ungated(self):
+        gated_best = ranking.compute_rank_score(100, _iso(0), PARKED,
+                                                desirability_score=100, gated=True)
+        ungated_worst = ranking.compute_rank_score(
+            20, _iso(300), PARKED, desirability_score=1)
+        self.assertLess(gated_best, ungated_worst)
+
+    def test_gated_band_is_fit_ordered(self):
+        hi = ranking.compute_rank_score(90, _iso(0), PARKED, gated=True)
+        lo = ranking.compute_rank_score(40, _iso(0), PARKED, gated=True)
+        self.assertGreater(hi, lo)
+        self.assertLessEqual(hi, 100 * ranking.GATED_RANK_FACTOR)
+
+    def test_gate_ignores_age_and_desirability(self):
+        a = ranking.compute_rank_score(80, _iso(0), PARKED,
+                                       desirability_score=95, gated=True)
+        b = ranking.compute_rank_score(80, _iso(300), PARKED,
+                                       desirability_score=5, gated=True)
+        self.assertEqual(a, b)
+
+    def test_default_is_ungated(self):
+        self.assertEqual(ranking.compute_rank_score(80, _iso(0), PARKED), 80.0)
+
+
 class PlatformFactorTest(unittest.TestCase):
     def test_parked_below_threshold(self):
         # With few outcomes, rank == fit * age_decay (factor == 1.0).

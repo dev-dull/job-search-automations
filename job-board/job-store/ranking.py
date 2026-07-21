@@ -44,6 +44,15 @@ DEFAULT_GLOBAL_CALLBACK_RATE = 0.10
 # (no preferences configured, or a row not yet re-scored), rank uses fit alone.
 DESIRABILITY_WEIGHT = 0.5
 
+# --- Gates (#72 phase 1) --------------------------------------------------
+# A posting that fails a HARD deal-breaker from the preferences profile (level
+# band, location/timezone, onsite, excluded role family, missing required
+# qualification) is floored into a low band rather than averaged: no amount of
+# fit buys back a disqualification. The band stays fit-ordered (rank = fit *
+# factor, ~0-5) so gated rows cluster at the bottom of the board where a
+# mis-fired gate is easy to spot and review — floored, never hidden.
+GATED_RANK_FACTOR = 0.05
+
 
 def _parse_date(d):
     if not d:
@@ -84,7 +93,7 @@ def platform_factor(platform_callbacks, platform_applied, global_callback_rate):
 
 
 def compute_rank_score(fit_score, posted_at, platform_stats, discovered_at=None,
-                       desirability_score=None):
+                       desirability_score=None, gated=False):
     """
     platform_stats = (platform_callbacks, platform_applied, global_callback_rate,
                       global_applied)
@@ -92,9 +101,14 @@ def compute_rank_score(fit_score, posted_at, platform_stats, discovered_at=None,
     base = blend(fit_score, desirability_score) when both exist, else fit_score.
     Falls back to `discovered_at` when `posted_at` is missing - most plugin POSTs
     and some Workday postings don't carry an explicit publish date.
+
+    gated=True (the posting failed a hard deal-breaker, #72) floors the rank
+    into the GATED_RANK_FACTOR band regardless of fit/desirability/age.
     """
     if fit_score is None:
         return None
+    if gated:
+        return round(fit_score * GATED_RANK_FACTOR, 2)
     p_cb, p_app, g_rate, g_applied = platform_stats
     base = fit_score
     if desirability_score is not None:

@@ -113,7 +113,8 @@ def list_candidates(*, fit_min: float, rank_min: float) -> list[tuple[float, dic
     with db.cursor() as conn:
         rows = conn.execute(
             """
-            SELECT id, company, title, fit_score, posted_at, discovered_at,
+            SELECT id, company, title, fit_score, desirability_score, gated,
+                   posted_at, discovered_at,
                    ats_platform, url, description, branch, status
             FROM jobs
             WHERE status IN ('discovered','ranked')
@@ -134,6 +135,7 @@ def list_candidates(*, fit_min: float, rank_min: float) -> list[tuple[float, dic
             d.get("fit_score"), d.get("posted_at"), platform_cache[ats],
             discovered_at=d.get("discovered_at"),
             desirability_score=d.get("desirability_score"),
+            gated=bool(d.get("gated")),
         )
         if rank is None or rank <= rank_min:
             continue

@@ -22,7 +22,9 @@ except Exception:
 
 import anthropic_client as ac  # noqa: E402
 
-_DESIRABILITY_FIELDS = ("desirability_score", "desirability_explanation", "pace_signals")
+_DESIRABILITY_FIELDS = ("desirability_score", "desirability_explanation",
+                        "pace_signals", "gate_failures")
+_EVIDENCE_FIELDS = ("candidate_strong_matches", "required_qualification_misses")
 
 
 def _prompt(has_preferences):
@@ -51,10 +53,25 @@ class DesirabilitySchemaTest(unittest.TestCase):
         for k in _DESIRABILITY_FIELDS:
             self.assertIn(f"{k}:", p, k)
 
-    def test_no_preferences_path_is_unchanged(self):
+    def test_no_preferences_path_has_no_desirability(self):
         p = _prompt(has_preferences=False)
         self.assertNotIn("desirability", p)
         self.assertNotIn("pace_signals", p)
+        self.assertNotIn("gate_failures", p)
+
+    def test_evidence_fields_in_base_schema_and_both_prompts(self):
+        # #72 stage 2: evidence-weighted fit applies to every scoring call.
+        for k in _EVIDENCE_FIELDS:
+            self.assertIn(k, ac.FIT_SCHEMA["properties"], k)
+            self.assertIn(k, ac.FIT_SCHEMA["required"], k)
+            self.assertIn(f"{k}:", _prompt(True), k)
+            self.assertIn(f"{k}:", _prompt(False), k)
+
+    def test_gate_failures_is_an_object_array_requiring_evidence(self):
+        s = ac._schema_with_desirability()
+        item = s["properties"]["gate_failures"]["items"]
+        self.assertEqual(item["type"], "object")
+        self.assertEqual(sorted(item["required"]), ["evidence", "gate"])
 
 
 if __name__ == "__main__":

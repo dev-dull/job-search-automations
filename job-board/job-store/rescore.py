@@ -61,15 +61,17 @@ def main(argv=None) -> int:
             continue
         fit = analysis.get("candidate_score")
         des = analysis.get("desirability_score")
+        gated = bool(analysis.get("gate_failures"))
         # url-keyed upsert; None fields are COALESCE'd (kept) so we only touch
         # the scored fields.
         db.upsert_job(url=r["url"], company=None, title=None, description=None,
                       ats_platform=None, posted_at=None, discovered_by=None,
                       fit_score=fit, analysis_json=json.dumps(analysis),
-                      desirability_score=des)
+                      desirability_score=des, gated=1 if gated else 0)
         rank = ranking.compute_rank_score(
             fit, r["posted_at"], db.get_platform_stats(r["ats_platform"]),
-            discovered_at=r["discovered_at"], desirability_score=des)
+            discovered_at=r["discovered_at"], desirability_score=des,
+            gated=gated)
         db.update_rank_score(r["id"], rank)
         done += 1
         print(f"  ~ id={r['id']} fit={fit} desirability={des} rank={rank}")

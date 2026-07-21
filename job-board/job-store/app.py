@@ -244,6 +244,7 @@ def _with_live_rank(jobs):
             platform_cache[ats],
             discovered_at=job.get("discovered_at"),
             desirability_score=job.get("desirability_score"),
+            gated=bool(job.get("gated")),
         )
     return jobs
 
@@ -354,6 +355,7 @@ def score_job():
             existing["fit_score"], existing.get("posted_at"), stats,
             discovered_at=existing.get("discovered_at"),
             desirability_score=existing.get("desirability_score"),
+            gated=bool(existing.get("gated")),
         )
         return jsonify({
             "id": existing["id"],
@@ -402,6 +404,7 @@ def score_job():
                 existing["fit_score"], existing.get("posted_at"), stats,
                 discovered_at=existing.get("discovered_at"),
                 desirability_score=existing.get("desirability_score"),
+                gated=bool(existing.get("gated")),
             )
             return jsonify({
                 "id": existing["id"],
@@ -441,6 +444,10 @@ def score_job():
     # configured and the row was scored server-side; None for legacy plugin
     # analyses, which keeps ranking on fit alone.
     desirability_score = analysis.get("desirability_score") if analysis else None
+    # Gate verdict (#72): a posting that clearly fails a hard deal-breaker is
+    # floored in ranking; the failures themselves (gate + quoted evidence)
+    # live in analysis_json for the board to explain the floor.
+    gated = bool(analysis.get("gate_failures")) if analysis else None
 
     job_id = db.upsert_job(
         url=url,
@@ -453,6 +460,7 @@ def score_job():
         fit_score=fit_score,
         analysis_json=json.dumps(analysis) if analysis else None,
         desirability_score=desirability_score,
+        gated=(1 if gated else 0) if gated is not None else None,
     )
 
     rank = ranking.compute_rank_score(
@@ -460,6 +468,7 @@ def score_job():
         db.get_platform_stats(payload.get("ats_platform")),
         discovered_at=datetime.utcnow().isoformat(),
         desirability_score=desirability_score,
+        gated=bool(gated),
     )
     new_status = "ranked" if fit_score is not None else "discovered"
     # update_rank_score only applies the status to discovered/ranked rows —
@@ -677,6 +686,7 @@ def rerank_all():
             db.get_platform_stats(job["ats_platform"]),
             discovered_at=job.get("discovered_at"),
             desirability_score=job.get("desirability_score"),
+            gated=bool(job.get("gated")),
         )
         db.update_rank_score(job["id"], rank)
     return redirect(url_for("index"))

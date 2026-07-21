@@ -67,5 +67,31 @@ class UpdateRankScoreStatusGuardTest(unittest.TestCase):
         self.assertEqual((row["status"], row["rank_score"]), ("applied", 42.0))
 
 
+class GatedPersistenceTest(unittest.TestCase):
+    """#72: the gated flag persists via upsert and defaults to 0."""
+
+    def test_upsert_stores_and_preserves_gated(self):
+        jid = db.upsert_job(
+            url="https://boards.greenhouse.io/x/jobs/909", company="X",
+            title="T", description="d" * 200, ats_platform="greenhouse",
+            posted_at=None, discovered_by="test", fit_score=80,
+            analysis_json=None, gated=1)
+        self.assertEqual(db.get_job(jid)["gated"], 1)
+        # re-upsert with gated=None (legacy caller) must not clobber it
+        db.upsert_job(url="https://boards.greenhouse.io/x/jobs/909",
+                      company=None, title=None, description=None,
+                      ats_platform=None, posted_at=None, discovered_by=None,
+                      fit_score=None, analysis_json=None)
+        self.assertEqual(db.get_job(jid)["gated"], 1)
+
+    def test_default_ungated(self):
+        jid = db.upsert_job(
+            url="https://boards.greenhouse.io/x/jobs/910", company="X",
+            title="T", description="d" * 200, ats_platform="greenhouse",
+            posted_at=None, discovered_by="test", fit_score=80,
+            analysis_json=None)
+        self.assertEqual(db.get_job(jid)["gated"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()
