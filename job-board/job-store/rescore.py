@@ -33,14 +33,22 @@ def main(argv=None) -> int:
                     help="max rows to re-score (bounds Anthropic spend)")
     ap.add_argument("--dry-run", action="store_true",
                     help="list what would be re-scored, no Anthropic calls")
+    ap.add_argument("--gate-backfill", action="store_true",
+                    help="target rows scored before the gated schema (#72) "
+                         "instead of rows missing desirability")
     args = ap.parse_args(argv)
 
     if not read_preferences():
         print("warning: PREFERENCES_PATH is unset/empty — re-scoring will only "
               "refresh fit, not add a desirability score.", file=sys.stderr)
 
-    rows = db.top_open_missing_desirability(args.limit)
-    print(f"{len(rows)} open row(s) without a desirability score"
+    if args.gate_backfill:
+        rows = db.top_open_missing_gates(args.limit)
+        what = "scored before the gated schema"
+    else:
+        rows = db.top_open_missing_desirability(args.limit)
+        what = "without a desirability score"
+    print(f"{len(rows)} open row(s) {what}"
           f"{' [dry-run]' if args.dry_run else ''}\n")
 
     done = failed = skipped = 0

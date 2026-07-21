@@ -448,6 +448,21 @@ def top_open_missing_desirability(limit):
         ).fetchall()]
 
 
+def top_open_missing_gates(limit):
+    """Open rows not yet scored under the gated schema (#72) — analysis_json
+    predates gate_failures. Ordered by current rank so the visible top of the
+    board converges to the new ordering first (rescore.py --gate-backfill)."""
+    with cursor() as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT id, url, description, ats_platform, posted_at, discovered_at "
+            "FROM jobs WHERE status IN ('discovered', 'ranked') "
+            "AND fit_score IS NOT NULL "
+            'AND (analysis_json IS NULL OR analysis_json NOT LIKE \'%"gate_failures"%\') '
+            "ORDER BY rank_score DESC LIMIT ?",
+            (limit,),
+        ).fetchall()]
+
+
 def all_job_urls():
     """Every stored job URL. Backs GET /jobs/urls, which the poller uses for
     dedupe without direct DB access."""
