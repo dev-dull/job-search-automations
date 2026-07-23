@@ -93,7 +93,11 @@ CREATE TABLE IF NOT EXISTS settings (
 
 
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
+    # WAL allows one writer at a time; the web app, poller-driven scoring, and
+    # rescore.py can all hold it. The default 5s busy timeout let a long poller
+    # write kill a rescore run mid-flight ("database is locked") — wait out
+    # contention instead.
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
