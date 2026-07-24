@@ -4,20 +4,24 @@ A re-score must never demote a job the user acted on: update_rank_score's
 status write only applies to rows still in the discovery pipeline
 (discovered/ranked); applied/closed keep their workflow state.
 
-Uses the real db layer against a throwaway DB via JOBS_DB_PATH (set before
-importing db, which reads it at import time).
+Uses the real db layer against a throwaway DB. db.DB_PATH is assigned
+directly (like test_migrations does): db reads JOBS_DB_PATH at import time,
+and under unittest discovery an earlier test module may already have imported
+db — setting the env var here would silently leave DB_PATH pointing at the
+developer's real jobs.db and write fixture rows into it.
 """
 
 import os
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ["JOBS_DB_PATH"] = os.path.join(tempfile.mkdtemp(), "test-jobs.db")
 
 import db  # noqa: E402
 
+db.DB_PATH = Path(tempfile.mkdtemp()) / "test-jobs.db"
 db.init_db()
 
 
