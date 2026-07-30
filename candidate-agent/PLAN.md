@@ -78,9 +78,9 @@ A small `get_profile_summary()` tool/resource returns a short public "card"
 ## Knowledge corpus — well beyond the resume
 
 The agent's knowledge is a **curated corpus**, not just a profile doc: cover
-letters, blog posts, video transcripts, code samples with commentary, project
-write-ups — anything the candidate chooses to publish to employers, with
-redactions applied at the source.
+letters, blog posts, video transcripts, project documentation — anything the
+candidate chooses to publish to employers, with redactions applied at the
+source.
 
 Corpus layout (lives in the private repo, mounted at `CORPUS_PATH`):
 
@@ -91,7 +91,8 @@ corpus/
   posts/*.md              # blog posts
   cover-letters/*.md      # redacted cover letters
   transcripts/*.md        # video/talk transcripts
-  code/<sample>/*         # code samples + a commentary.md per sample
+  projects/*.md           # per-project documentation: what it is, the problem,
+                          # architecture/decisions, outcomes, repo link if public
 ```
 
 Each document carries YAML front-matter metadata: `title`, `type`, `date`,
