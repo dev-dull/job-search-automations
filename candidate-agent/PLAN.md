@@ -1,50 +1,104 @@
 # Candidate Agent — research & build plan
 
-An AI agent that potential employers can talk to about the candidate's
-employment history, skills, and interests. Two front doors, one brain:
+*(Verified 2026-07-30 by a three-way review: an external-claims fact-check,
+a reference-deployment audit, and an adversarial internal-consistency pass.
+Corrections from that review are folded in below.)*
 
-1. **Their own chat client** — the service is a remote MCP server; a recruiter
-   adds one URL (plus an access code) to Claude Desktop, claude.ai custom
-   connectors, Claude Code, or ChatGPT developer mode, and their assistant can
-   interview the agent directly.
+An AI agent that potential employers can talk to about a candidate's
+employment history, skills, and interests. Like everything in this repo, it
+is a **tool anyone can adopt for their own job hunt**: this plan describes
+what to build and the properties a deployment must provide. Where the agent
+runs, what domain it answers on, and what personal content it serves are the
+operator's decisions, made at deploy time through runtime configuration —
+none of that lives in this repository.
+
+Two front doors, one brain:
+
+1. **The employer's own chat client** — the service is a remote MCP server; a
+   recruiter adds one URL (plus an access code) to Claude Code, Claude
+   Desktop, claude.ai custom connectors, or ChatGPT developer mode, and their
+   assistant can interview the agent directly.
 2. **A browser URL** — a minimal chat page for people who don't run an AI
    client at all: enter the access code, start asking.
 
-Access is gated by **per-employer unique codes** so every conversation is
-attributable to whoever the code was issued to, and any code can be revoked
-without affecting the others.
+Access is gated by **per-employer unique codes** so access is attributable to
+whoever the code was issued to (full conversation records arrive in phase 2),
+and any code can be revoked without affecting the others.
 
 ---
 
-## Research findings (July 2026)
+## Verified constraints (July 2026)
 
-- **Remote MCP transport**: Streamable HTTP is the standard; the older
-  SSE-only transport is deprecated. The recommended Python stack is
-  **FastMCP** (v3.x) which mounts into a FastAPI/uvicorn app — one process can
-  serve both the MCP endpoint and the browser UI.
-- **Auth support**: all major clients now accept a static bearer header on
-  remote MCP servers — Claude Code (`claude mcp add --transport http --header
-  "Authorization: Bearer <code>" <url>`), Claude Desktop, claude.ai custom
-  connectors (via advanced settings), and ChatGPT developer mode. A
-  code-in-URL-path endpoint (`/mcp/<code>`) works everywhere as a fallback but
-  leaks the code into proxy/CDN logs, so it's the backup pattern, not the
-  primary.
-- **OAuth 2.1**: the MCP spec mandates OAuth for public remote servers, and
-  clients probe `/.well-known/oauth-protected-resource` on a 401. In practice
-  bearer headers work today across the clients we care about. Plan: ship
-  bearer-first, keep a minimal OAuth-shim (code-entry page acting as the
-  authorization screen, short-lived tokens) as a fast-follow if some client
-  refuses plain bearer auth.
-- **Agent engine**: for a single-purpose Q&A persona with no server-side tool
-  use, the raw **Messages API with prompt caching** is the right engine — it's
-  the pattern this repo already uses in job-store, gives full control over the
-  system prompt and costs, and streams natively. The Claude Agent SDK or
-  Managed Agents only pay off once the agent needs tools/sandboxes; noted as a
-  later option, not phase 1.
-- **Browser streaming**: SSE (not websockets) — native `EventSource` in the
-  browser, native SSE out of the Anthropic API, automatic reconnects, and it
-  passes plain HTTP ingresses. One caveat for our ingress: response buffering
-  must be off for the stream path.
+**MCP transport & clients**
+- Streamable HTTP is the standard; SSE-only transport is deprecated. Python
+  stack: **FastMCP v3** — mount `mcp.http_app(transport="streamable-http")`
+  into the FastAPI app (`app.mount("/mcp", mcp_app)` with the mcp app's
+  lifespan). Note: `FastMCP.from_fastapi()` does the *opposite* (wraps REST
+  endpoints as tools) — not what we want.
+- Bearer-header auth verified per client: **Claude Code** (`--header` flag) ✓,
+  **Claude Desktop** ✓, **ChatGPT developer mode** ✓ (via header config).
+  **claude.ai custom connectors: currently broken for static bearer** — the
+  client ignores the configured header and attempts OAuth (open upstream bugs
+  as of July 2026). Consequence: the `/mcp/<code>` URL-path form is not a
+  backup, it is the *required* path for claude.ai users until upstream fixes
+  land.
+- No client hard-requires OAuth discovery today: bearer-only servers work with
+  graceful fallbacks (the spec mandates RFC 9728 metadata, but enforcement is
+  pragmatic). OAuth 2.1 PKCE shim stays a phase-3 contingency — single
+  mention, see phase 3.
+- Logging which client connected (Claude Desktop vs Code vs ChatGPT) requires
+  custom FastMCP middleware capturing `clientInfo` from the `initialize`
+  handshake — it is not exposed for free.
+
+**Model & cost (honest numbers)**
+- `claude-sonnet-5` (the default): 1M context — a 150k-token corpus leaves
+  vast headroom.
+- Prompt-cache economics at full corpus (~150k tokens): cold-start cache
+  write ≈ **$0.60**, cached follow-ups ≈ $0.03–0.04/message. A 10-question
+  recruiter conversation ≈ **$0.50–0.80**, rising ~50% when Sonnet 5 intro
+  pricing ends (Sept 2026). Dimes-to-a-dollar per conversation, *not*
+  "pennies" — acceptable for the purpose, but per-code budgets are stated in
+  dollars for a reason (below).
+
+**Runtime**
+- FTS5 (needed for retrieval rung 2) ships in `python:3.13-slim`'s bundled
+  SQLite but **not** in `python:3.12-slim`. The image pins 3.13 and asserts
+  FTS5 at startup so the retrieval rung can't be silently blocked.
+- SQLite means **single process** (`uvicorn --workers 1`); async handles
+  concurrent streams within it.
+
+## Deployment requirements (what any operator must provide)
+
+The service is one container. It runs anywhere that can satisfy these
+properties — a k8s cluster, a VPS, a container platform:
+
+1. **Public HTTPS reachability.** Employers are strangers on the internet;
+   the endpoint must be reachable from outside the operator's network, with
+   valid TLS. Self-hosters should verify this explicitly — a hostname that
+   resolves internally (split-horizon DNS, LAN-only ingress, a router
+   occupying 443) is the classic silent failure. Tunnels (cloudflared,
+   Tailscale Funnel), port-forwards, or a VPS relay all work; the app doesn't
+   care.
+2. **Streaming-friendly ingress.** Both surfaces hold open streaming
+   responses. The proxy in front must not buffer them, and its write/idle
+   timeouts bound stream lifetime — the app and chat page handle reconnects,
+   but operators should know their proxy's limits.
+3. **Private content mounted at runtime.** The corpus, access codes, and
+   denylist are files the operator supplies via mounted paths (env vars
+   below). They live wherever the operator keeps private data — typically a
+   private git repo. **How fresh the mount is bounds revocation latency**: a
+   sync mechanism that pulls every minute gives ~2-minute worst-case
+   revocation; a clone-once-at-boot mount means revocation waits for a
+   restart. The reference k8s manifests use a git-sync sidecar with a short
+   interval and loud failure logging; operators choosing other mounts should
+   document their own latency.
+4. **An Anthropic API key** with a spend limit the operator is comfortable
+   with (the app's own budget guards are a second line, not the first).
+
+The repo ships: the container image build, a helm chart with the
+ingress/host/mount details left as values, and a compose file for
+non-k8s operators. No hostnames, providers, or operator infrastructure are
+baked in.
 
 ## Architecture
 
@@ -52,11 +106,11 @@ without affecting the others.
 employer's Claude/ChatGPT ──MCP (Streamable HTTP + Bearer code)──┐
                                                                  ▼
 employer's browser ──/  code-entry page → SSE chat ──▶  candidate-agent (FastAPI)
-                                                        ├─ auth: access-code table
+                                                        ├─ auth: access-code file (ph.1) / table (ph.2)
                                                         ├─ answer engine (Messages API,
-                                                        │   prompt-cached persona)
+                                                        │   prompt-cached corpus)
                                                         ├─ phase 2: session/transcript log
-                                                        └─ profile docs (mounted, private)
+                                                        └─ corpus (mounted, private, redacted)
                                                                  │
                                                                  ▼
                                                           Anthropic API
@@ -67,10 +121,19 @@ documents to the employer's model; it exposes a tool
 (`ask_candidate_agent(question)`) that runs the same server-side engine the
 browser uses. Consequences, all deliberate:
 
-- Every answer is generated under OUR system prompt — tone, boundaries, and
-  what's off-limits are enforced server-side, not left to the caller's model.
-- Both surfaces produce identical transcript records (phase 2).
-- The private profile documents never leave the server.
+- Every answer is generated under the operator's system prompt — tone,
+  boundaries, and what's off-limits are enforced server-side, not left to the
+  caller's model.
+- The private corpus never leaves the server.
+- Both surfaces log through the same engine — but the records differ by
+  nature (stated honestly): the **browser** surface logs full conversations
+  with server-held history; the **MCP** surface logs individual Q/A tool
+  calls, grouped best-effort by MCP transport session — the employer's
+  surrounding conversation is never visible to the server, and one connector
+  session may span several of their chats. To reduce the quality asymmetry on
+  follow-ups, the engine threads its own short history keyed on the MCP
+  session ID (documented as best-effort, since transport sessions ≠
+  conversations).
 
 A small `get_profile_summary()` tool/resource returns a short public "card"
 (name, headline, links) so client UIs have something to render immediately.
@@ -82,11 +145,11 @@ letters, blog posts, video transcripts, project documentation — anything the
 candidate chooses to publish to employers, with redactions applied at the
 source.
 
-Corpus layout (lives in the private repo, mounted at `CORPUS_PATH`):
+Corpus layout (operator-owned, mounted at `CORPUS_PATH`):
 
 ```
 corpus/
-  profile.md              # the spine: identity, headline, links (was PROFILE_PATH)
+  profile.md              # the spine: identity, headline, links
   faq.md                  # canned answers (availability, authorization, ...)
   posts/*.md              # blog posts
   cover-letters/*.md      # redacted cover letters
@@ -103,10 +166,14 @@ sees). No central manifest to keep in sync — the file *is* the record.
 redacted before they enter `corpus/` (e.g. cover letters get `[COMPANY]`
 placeholders). Two safety nets on top:
 
-- A **redaction linter** at ingest: `REDACTION_DENYLIST_PATH` points at a
-  private list of strings that must never appear (names of target companies,
-  phone number, street address, ...). A hit fails startup loudly with the file
-  and line — a redaction miss becomes a deploy failure instead of a leak.
+- A **redaction linter** at ingest: `REDACTION_DENYLIST_PATH` points at an
+  operator-supplied list of strings that must never appear (names of target
+  companies, phone number, street address, ...). Semantics, precisely: a hit
+  at **startup fails startup loudly** with file and line; a hit on a **live
+  reload** (the content sync delivered a bad document) **rejects the new
+  corpus, keeps serving the last-good in-memory corpus, and alerts loudly** —
+  a redaction miss becomes a blocked update, never a leak and never a
+  crash-loop.
 - The engine's system prompt still declines out-of-bounds topics (comp,
   references' contacts, active processes), as the second layer.
 
@@ -120,16 +187,16 @@ only when the corpus outgrows the current one:
    holds a profile, dozens of posts/letters, and several transcripts. Zero
    retrieval infrastructure, zero retrieval misses: the model always sees
    everything, which is exactly what makes small-corpus RAG underperform.
-   Cache reads keep the per-message cost in cents even at 100k+ tokens.
+   (Cost at this ceiling: see Verified constraints — dimes per conversation.)
 2. **Agentic keyword retrieval (phase 2, or when the corpus outgrows #1).**
    The answer engine becomes a small tool loop: the model sees `profile.md` +
    a corpus index (titles/types/summaries) in full, plus two server-side
    tools — `search_corpus(query)` (SQLite FTS5/BM25 over the docs; the DB
-   already exists for session recording) and `read_doc(id)`. The model pulls
-   what each question needs. This is the modern replacement for classic
-   embeddings-RAG on curated corpora: better precision on exact terms
-   (project names, tool names), no embedding pipeline, no chunking tuning,
-   and it runs on infrastructure we already have.
+   already exists for session recording, and the 3.13 base image + startup
+   assert guarantee FTS5) and `read_doc(id)`. The model pulls what each
+   question needs. This is the modern replacement for classic embeddings-RAG
+   on curated corpora: better precision on exact terms (project names, tool
+   names), no embedding pipeline, no chunking tuning.
 3. **Embeddings (only if needed).** If FTS retrieval demonstrably misses
    paraphrased questions at scale, add vector search (sqlite-vec + a local
    embedding model or Voyage API) as a *second* search tool beside FTS, not a
@@ -140,27 +207,27 @@ tools are internal to the server-side engine, so MCP callers still see only
 `ask_candidate_agent` — control, logging, and the privacy boundary stay
 identical.
 
-## Privacy & data separation (same rule as job-store)
+## Privacy & data separation (the repo-wide rule)
 
-This repo is public. **No personal content ships in it — not in code, tests,
-fixtures, or prompts.** All personal inputs are runtime-provided paths, and the
-k8s deployment mounts them from the private repo exactly like job-store mounts
-the resume:
+This repo is public and contains **no personal content — not in code, tests,
+fixtures, or prompts.** All personal inputs are runtime-provided paths the
+operator mounts from their own private storage:
 
 - `CORPUS_PATH` — the curated corpus described above. Deliberately disjoint
-  from `RESUME_PATH`'s file and the preferences file: the scoring resume and
-  preferences contain things an employer must never see (comp expectations,
-  deal-breakers, companies under consideration, commented drafts). Curation
-  into `corpus/` is the privacy boundary, not prompt instructions alone.
+  from any scoring-resume or preferences files an operator uses with the
+  job-board tools: those contain things an employer must never see (comp
+  expectations, deal-breakers, companies under consideration, drafts).
+  Curation into `corpus/` is the privacy boundary, not prompt instructions
+  alone.
 - `REDACTION_DENYLIST_PATH` (optional but recommended) — the never-appear
   string list enforced at ingest.
-- `ACCESS_CODES_PATH` (phase 1) — the code table, also private-repo-owned.
+- `ACCESS_CODES_PATH` (phase 1) — the code table, operator-owned.
 
-The system prompt additionally instructs the agent to decline questions
-outside the profile (salary expectations, references' contacts, other
-processes) and to redirect contact requests to the candidate's listed email.
-Prompt-injection resistance comes primarily from the engine never *having*
-sensitive data, secondarily from instructions.
+Full env inventory: `ANTHROPIC_API_KEY` (secret), `ANTHROPIC_MODEL` (default
+`claude-sonnet-5`), `CORPUS_PATH`, `ACCESS_CODES_PATH`,
+`REDACTION_DENYLIST_PATH`, `AGENT_DB_PATH` (phase 2), `ADMIN_TOKEN`
+(phase 2), plus rate/budget knobs (`RATE_LIMIT_PER_HOUR`,
+`DAILY_BUDGET_USD_PER_CODE`, `DAILY_BUDGET_USD_GLOBAL`) with sane defaults.
 
 ## Access codes
 
@@ -168,120 +235,161 @@ Format: `firstpart-secondpart-checkword` style human-typeable token (e.g.
 `maple-K7RT-hazel`), unique per employer/recruiter. Properties per code:
 
 - `label` (who it was issued to), `created_at`, `expires_at` (default 30
-  days), `revoked` flag, optional `note`.
-- Phase 1 storage: a flat file in the private repo (path via
-  `ACCESS_CODES_PATH`, same line-based format family as the company
-  adjustments file), reloaded on mtime change. Minting = adding a line +
-  `git push`; revoking = removing it. No admin UI needed to start sharing.
+  days), `revoked` flag, optional `note`, and a per-code `url_auth` flag
+  (below).
+- Phase 1 storage: a flat file at `ACCESS_CODES_PATH`, reloaded when the
+  mounted content changes. Minting = adding a line and letting the content
+  sync deliver it; revoking = removing it. **Revocation latency = the
+  operator's content-sync interval + reload** (~2 minutes with the reference
+  sidecar). No admin UI needed to start sharing.
 - Phase 2 storage: moves into the SQLite DB (needed anyway for session
   records) with a tiny `mint_code.py` CLI; the file stays supported as seed
   input.
 
 Where the code travels:
-- MCP: `Authorization: Bearer <code>` header (primary); `/mcp/<code>` path
-  accepted as fallback for header-less clients.
-- Browser: code-entry form → server-set HttpOnly session cookie; the code
-  never sits in the page URL, so it can't be shared by copy-pasting a link.
+- MCP: `Authorization: Bearer <code>` header (primary — Claude Code, Claude
+  Desktop, ChatGPT). `/mcp/<code>` path form: **per-code opt-in via the
+  `url_auth` flag**, issued deliberately for claude.ai users (whose connector
+  currently can't send static headers). URL-authed codes are accepted knowing
+  the code lands in access logs — so app logs scrub `/mcp/*` paths (operators
+  should scrub their ingress logs likewise), and those codes default to
+  shorter expiry.
+- Browser: code-entry form → server-set HttpOnly cookie (`SameSite=Lax`,
+  fresh session ID issued at code entry); `/chat` additionally requires a
+  custom header (free via `fetch`, blocks cross-site form posts). The code
+  never sits in the page URL. **Every cookie-authed request re-validates the
+  code against the current table**, so revocation kills live sessions too.
 
 Abuse guards from day one (this is a public LLM endpoint gated by codes that
-strangers hold): per-code rate limit (requests/hour), per-code daily token
-budget, hard `max_tokens` per answer, conversation-length cap, and a global
-daily budget kill-switch. A revoked/expired code gets a friendly "this link
-has expired — contact <email>" rather than a bare 401 on the browser surface.
+strangers hold):
+- Per-code request rate limit and **cost-weighted daily budget** — the budget
+  sums the API's reported `input`, `cache_read`, `cache_creation`, and
+  `output` token counts at their respective prices (i.e. it tracks dollars).
+  Cached corpus reads are ~10% of input price, which is what makes
+  full-context rung 1 and per-code budgets compatible.
+- Hard `max_tokens` per answer; per-conversation turn cap on the browser
+  surface; per-transport-session tool-call cap on MCP (a "conversation" cap
+  is unenforceable there — see architecture note).
+- Global daily budget kill-switch.
+- **Failed-attempt limiter**: per-IP + global circuit breaker on invalid-code
+  attempts (the codes are deliberately human-typeable, i.e. low-entropy;
+  unthrottled guessing is otherwise the one ungated path).
+- Phase-1 counters are **in-memory and reset on restart** — a known,
+  accepted gap at single-replica scale; thresholds are set conservatively
+  because of it, and counters move into the DB in phase 2.
+- A revoked/expired code gets a friendly "this link has expired — contact
+  <email>" rather than a bare 401 on the browser surface.
 
 ## Phase 1 — shareable MVP
 
-Goal: a URL + code you can put in an application or hand a recruiter this
-week.
+Goal: a URL + code the operator can put in an application or hand a
+recruiter. (Operators must clear deployment requirement #1 — public
+reachability — before anything here matters outside their LAN.)
 
-Components (new `candidate-agent/` service, sibling of `job-board/`):
+Components (this `candidate-agent/` directory, sibling of `job-board/`):
 
-1. `app.py` — FastAPI:
-   - `POST /mcp` (FastMCP mount, Streamable HTTP) with bearer-code auth
-     middleware; tools: `ask_candidate_agent(question)`,
-     `get_profile_summary()`.
+1. `app.py` — FastAPI (uvicorn, single process):
+   - `/mcp` — FastMCP `http_app` mounted; bearer-code middleware +
+     `/mcp/<code>` opt-in path handling; `initialize`-capture middleware
+     (client name/version, for phase-2 logging); tools:
+     `ask_candidate_agent(question)`, `get_profile_summary()`.
    - `GET /` — code-entry page (single template, no JS framework).
-   - `POST /chat` + `GET /chat/stream` — SSE chat for the browser surface,
-     cookie-authed, in-memory per-session history (single replica, matching
-     job-store's Recreate deployment model).
+   - `POST /chat` + SSE stream — cookie-authed per the codes section;
+     in-memory history; client-side reconnect handling (proxies commonly cap
+     stream lifetime).
    - `GET /healthz`.
+   - Client IPs behind a proxy via uvicorn `--proxy-headers`.
 2. `engine.py` — Messages API wrapper: prompt-cached system blocks (persona
    instructions + the assembled corpus), streaming and non-streaming entry
-   points, token accounting per code. Model via `ANTHROPIC_MODEL`, default
-   `claude-sonnet-5` (employer-facing quality is worth more than Haiku
-   savings at this traffic level; measured cost per conversation is pennies).
-3. `corpus.py` — corpus walker: front-matter parsing, redaction-linter pass,
-   token-count report at startup (logs how close the corpus is to the
-   full-context ceiling so the ladder climb is visible in advance), mtime
-   reload.
-4. `codes.py` — access-code file parsing, validation, rate/budget counters.
-5. Templates/static — chat page (plain HTML + EventSource, streaming into a
-   transcript div; mobile-friendly; clearly labeled as an AI agent).
-6. Tests — synthetic corpus fixtures only; auth (valid/expired/revoked),
-   rate limiting, corpus assembly + redaction linter (a planted denylist hit
-   must fail), MCP tool contract via FastMCP test client.
-7. Deploy — Dockerfile + helm chart cloned from job-store's shape (single
-   replica, private-repo init-container mount for profile/codes, ingress with
-   `proxy_buffering off` on the stream route), image built by the existing CI
-   pattern, pinned via Homelab GitOps. New hostname (e.g.
-   `agent.k8s.deep13.lol` — final name TBD by user; it appears in every
-   recruiter's address bar).
+   points, cost-weighted usage accounting per code, short per-MCP-session
+   history. Model via `ANTHROPIC_MODEL`.
+3. `corpus.py` — corpus walker: front-matter parsing, redaction-linter pass
+   (startup-fail vs reload-reject semantics as specified), token-count report
+   at startup (logs headroom against the full-context ceiling), reload on
+   mounted-content changes.
+4. `codes.py` — access-code file parsing, validation (incl. `url_auth` flag),
+   rate/budget counters, failed-attempt limiter.
+5. Templates/static — chat page (plain HTML + EventSource; mobile-friendly;
+   clearly labeled as an AI agent).
+6. Tests — synthetic corpus fixtures only; auth (valid/expired/revoked,
+   bearer AND url-path form, cookie re-validation), failed-attempt limiter,
+   rate limiting, corpus assembly + redaction linter (planted denylist hits
+   at startup and at reload), MCP tool contract via FastMCP test client.
+7. Packaging — Dockerfile (**`python:3.13-slim`**, FTS5 startup assert,
+   uvicorn `--workers 1`, non-root, read-only-rootfs-compatible); a helm
+   chart with host/ingress-class/TLS and the private-content mount left as
+   values (an optional git-sync sidecar with a short interval and loud
+   failures as the reference content-sync); a docker-compose example for
+   non-k8s operators. Image built by this repo's existing CI pattern.
 
 Definition of done for phase 1:
 - `claude mcp add --transport http --header "Authorization: Bearer <code>"
   https://<host>/mcp` works from a fresh machine, and `ask_candidate_agent`
-  answers profile questions.
-- The same code unlocks the browser page and streams answers.
-- A revoked code stops working on both surfaces within one reload interval.
-- Nothing personal exists in the public repo; the service refuses to start
-  without `CORPUS_PATH`, and refuses to start on a redaction-linter hit.
+  answers corpus questions.
+- A `url_auth`-flagged code works via `/mcp/<code>` (the claude.ai path).
+- The same code unlocks the browser page and streams answers, surviving a
+  forced reconnect.
+- A revoked code stops working on both surfaces — including already-open
+  browser sessions — within the deployment's stated content-sync latency.
+- Nothing personal exists in this repo; the service refuses to start
+  without `CORPUS_PATH`; a planted denylist hit blocks startup, and a
+  planted hit delivered via content sync is rejected while the last-good
+  corpus keeps serving.
+- Verified reachable from a network that is not the operator's own.
 
 ## Phase 2 — session recording & analytics
 
 Everything phase 1 keeps in memory becomes durable and attributable:
 
-- SQLite (`AGENT_DB_PATH`, WAL, 30s busy timeout — job-store lessons) with:
+- SQLite (`AGENT_DB_PATH`, WAL, generous busy timeout — a lesson the
+  job-board tools learned the hard way) with:
   - `codes` — the phase-1 file promoted to a table.
-  - `sessions` — code, surface (`mcp` | `web`), started/last-active/ended
-    (duration derivable), IP (from `X-Forwarded-For` via ProxyFix), browser
-    `User-Agent`, and for MCP the client name/version from the `initialize`
-    handshake (Claude Desktop vs Claude Code vs ChatGPT is visible there).
-  - `messages` — session, role, content, timestamp, input/output token
-    counts.
+  - `sessions` — code, surface (`mcp` | `web`), started/last-active/ended,
+    IP (proxy headers), browser `User-Agent`, and for MCP the client
+    name/version captured by the `initialize` middleware. For `web` a session
+    is a real conversation; for `mcp` it is a transport session (best-effort
+    grouping — documented, not pretended away).
+  - `messages` — session, role, content, timestamp, token counts by class
+    (input / cache_read / cache_creation / output) so per-code cost is exact.
+- Rate/budget counters move from memory into the DB (restart-proof).
 - Disclosure line on the chat page and in the MCP server description:
   conversations are recorded and reviewed. (Both ethical and useful — it
   deters abuse.)
-- `GET /admin` (separate admin token, not employer codes): sessions per code,
-  transcripts, token spend per code, last-seen. Phase 2a can simply be a
-  read-only CLI (`report.py`) before any admin UI exists.
-- Optional push: a note into Trilium or email when a new session starts —
-  "someone at <code label> is talking to your agent right now."
+- `GET /admin` (separate `ADMIN_TOKEN`; operators can additionally shield it
+  with whatever forward-auth their ingress offers): sessions per code,
+  transcripts, cost per code, last-seen. Phase 2a can be a read-only CLI
+  (`report.py`) before any admin UI exists.
+- Optional webhook on session start ("someone at <code label> is talking to
+  your agent right now") — operators point it at email, chat, or their notes
+  system.
 - **Retrieval rung 2 lands here if the corpus has outgrown full-context**:
   FTS5 index over the corpus in the same SQLite DB, `search_corpus` /
   `read_doc` tools in the engine loop.
 
 ## Phase 3 candidates (not planned in detail)
 
-- OAuth 2.1 PKCE shim if a target client drops bearer support.
+- OAuth 2.1 PKCE shim — the contingency if a target client drops bearer
+  support or claude.ai's header bug outlives its workaround (single home for
+  this item; the code-entry page would double as the authorization screen).
 - Per-employer tailoring: a code can carry a role/JD context so the agent
   emphasizes relevant experience.
 - "Ask me instead" handoff — the agent offers to schedule with the real human
   when questions exceed its scope.
-- Multi-candidate support (parameterize the persona) if this becomes a
-  shareable template for others.
+- A corpus-scaffolding helper: front-matter templates, a redaction checklist,
+  and a denylist skeleton to help new operators seed their corpus safely.
 
-## Open questions (need the user's call)
+## Operator deployment checklist (decisions this repo does not make)
 
-1. **Hostname** — `agent.k8s.deep13.lol`, something on `devdull.lol`, or a
-   dedicated domain? It's employer-visible branding.
-2. **Model** — default `claude-sonnet-5` for quality, or Haiku to start?
-3. **Corpus seeding** — user curates/redacts the initial corpus in the
-   private repo (the plan treats curation as the hard privacy boundary; I can
-   draft the front-matter template, a redaction checklist, and the denylist
-   skeleton, but the content selection is theirs). Also: roughly how much
-   material exists today (posts x KB, transcripts x hours)? That sizes which
-   retrieval rung phase 1 actually starts on.
-4. **Disclosure/tone** — any constraints on what the agent should volunteer
-   vs. only answer when asked (e.g., availability date, location)?
-5. **Recording consent wording** for phase 2 — plain line on the page, or
-   also spoken by the agent at conversation start?
+1. **Exposure & hostname** — how the service becomes publicly reachable
+   (tunnel, port-forward, VPS relay) and what employer-visible hostname it
+   answers on, with TLS.
+2. **Content home & sync** — where the private corpus/codes live and what
+   sync mechanism delivers changes (this sets revocation latency; document
+   it).
+3. **Corpus seeding** — what material goes in (posts, letters, transcripts,
+   project docs), redacted at source; corpus token size determines the
+   retrieval rung.
+4. **Model & budgets** — `ANTHROPIC_MODEL` and the rate/budget knobs, plus a
+   provider-side spend limit.
+5. **Tone & disclosure** — what the agent volunteers vs. answers only when
+   asked; recording-disclosure wording (phase 2).
