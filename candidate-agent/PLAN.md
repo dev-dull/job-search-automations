@@ -75,6 +75,70 @@ browser uses. Consequences, all deliberate:
 A small `get_profile_summary()` tool/resource returns a short public "card"
 (name, headline, links) so client UIs have something to render immediately.
 
+## Knowledge corpus — well beyond the resume
+
+The agent's knowledge is a **curated corpus**, not just a profile doc: cover
+letters, blog posts, video transcripts, code samples with commentary, project
+write-ups — anything the candidate chooses to publish to employers, with
+redactions applied at the source.
+
+Corpus layout (lives in the private repo, mounted at `CORPUS_PATH`):
+
+```
+corpus/
+  profile.md              # the spine: identity, headline, links (was PROFILE_PATH)
+  faq.md                  # canned answers (availability, authorization, ...)
+  posts/*.md              # blog posts
+  cover-letters/*.md      # redacted cover letters
+  transcripts/*.md        # video/talk transcripts
+  code/<sample>/*         # code samples + a commentary.md per sample
+```
+
+Each document carries YAML front-matter metadata: `title`, `type`, `date`,
+`tags`, and optional `summary` (one line, used in the corpus index the model
+sees). No central manifest to keep in sync — the file *is* the record.
+
+**Redaction is a source-side workflow, not a runtime filter.** Documents are
+redacted before they enter `corpus/` (e.g. cover letters get `[COMPANY]`
+placeholders). Two safety nets on top:
+
+- A **redaction linter** at ingest: `REDACTION_DENYLIST_PATH` points at a
+  private list of strings that must never appear (names of target companies,
+  phone number, street address, ...). A hit fails startup loudly with the file
+  and line — a redaction miss becomes a deploy failure instead of a leak.
+- The engine's system prompt still declines out-of-bounds topics (comp,
+  references' contacts, active processes), as the second layer.
+
+**Retrieval strategy — a ladder, not a vector DB by default.** The right
+mechanism depends on corpus size in tokens, and the design climbs one rung
+only when the corpus outgrows the current one:
+
+1. **Full-context (phase 1).** The whole corpus is concatenated (with
+   per-doc headers from front-matter) into prompt-cached system blocks.
+   Viable up to roughly ~150k tokens (~600KB of text) — which comfortably
+   holds a profile, dozens of posts/letters, and several transcripts. Zero
+   retrieval infrastructure, zero retrieval misses: the model always sees
+   everything, which is exactly what makes small-corpus RAG underperform.
+   Cache reads keep the per-message cost in cents even at 100k+ tokens.
+2. **Agentic keyword retrieval (phase 2, or when the corpus outgrows #1).**
+   The answer engine becomes a small tool loop: the model sees `profile.md` +
+   a corpus index (titles/types/summaries) in full, plus two server-side
+   tools — `search_corpus(query)` (SQLite FTS5/BM25 over the docs; the DB
+   already exists for session recording) and `read_doc(id)`. The model pulls
+   what each question needs. This is the modern replacement for classic
+   embeddings-RAG on curated corpora: better precision on exact terms
+   (project names, tool names), no embedding pipeline, no chunking tuning,
+   and it runs on infrastructure we already have.
+3. **Embeddings (only if needed).** If FTS retrieval demonstrably misses
+   paraphrased questions at scale, add vector search (sqlite-vec + a local
+   embedding model or Voyage API) as a *second* search tool beside FTS, not a
+   replacement. This rung may never be needed.
+
+The employer-facing surfaces don't change as the ladder climbs: retrieval
+tools are internal to the server-side engine, so MCP callers still see only
+`ask_candidate_agent` — control, logging, and the privacy boundary stay
+identical.
+
 ## Privacy & data separation (same rule as job-store)
 
 This repo is public. **No personal content ships in it — not in code, tests,
@@ -82,14 +146,13 @@ fixtures, or prompts.** All personal inputs are runtime-provided paths, and the
 k8s deployment mounts them from the private repo exactly like job-store mounts
 the resume:
 
-- `PROFILE_PATH` — the ONLY knowledge source: a curated, employer-facing
-  profile document written for this purpose. Deliberately NOT `RESUME_PATH`'s
-  file and NOT the preferences file: the scoring resume and preferences
-  contain things an employer must never see (comp expectations, deal-breakers,
-  companies under consideration, commented drafts). Curating a separate doc is
-  the privacy boundary, not prompt instructions alone.
-- `AGENT_FAQ_PATH` (optional) — canned answers for expected questions
-  (availability, work authorization, links to code/talks).
+- `CORPUS_PATH` — the curated corpus described above. Deliberately disjoint
+  from `RESUME_PATH`'s file and the preferences file: the scoring resume and
+  preferences contain things an employer must never see (comp expectations,
+  deal-breakers, companies under consideration, commented drafts). Curation
+  into `corpus/` is the privacy boundary, not prompt instructions alone.
+- `REDACTION_DENYLIST_PATH` (optional but recommended) — the never-appear
+  string list enforced at ingest.
 - `ACCESS_CODES_PATH` (phase 1) — the code table, also private-repo-owned.
 
 The system prompt additionally instructs the agent to decline questions
@@ -142,17 +205,21 @@ Components (new `candidate-agent/` service, sibling of `job-board/`):
      job-store's Recreate deployment model).
    - `GET /healthz`.
 2. `engine.py` — Messages API wrapper: prompt-cached system blocks (persona
-   instructions + profile + FAQ), streaming and non-streaming entry points,
-   token accounting per code. Model via `ANTHROPIC_MODEL`, default
+   instructions + the assembled corpus), streaming and non-streaming entry
+   points, token accounting per code. Model via `ANTHROPIC_MODEL`, default
    `claude-sonnet-5` (employer-facing quality is worth more than Haiku
    savings at this traffic level; measured cost per conversation is pennies).
-3. `codes.py` — access-code file parsing, validation, rate/budget counters.
-4. Templates/static — chat page (plain HTML + EventSource, streaming into a
+3. `corpus.py` — corpus walker: front-matter parsing, redaction-linter pass,
+   token-count report at startup (logs how close the corpus is to the
+   full-context ceiling so the ladder climb is visible in advance), mtime
+   reload.
+4. `codes.py` — access-code file parsing, validation, rate/budget counters.
+5. Templates/static — chat page (plain HTML + EventSource, streaming into a
    transcript div; mobile-friendly; clearly labeled as an AI agent).
-5. Tests — synthetic profile fixtures only; auth (valid/expired/revoked),
-   rate limiting, engine prompt assembly, MCP tool contract via FastMCP test
-   client.
-6. Deploy — Dockerfile + helm chart cloned from job-store's shape (single
+6. Tests — synthetic corpus fixtures only; auth (valid/expired/revoked),
+   rate limiting, corpus assembly + redaction linter (a planted denylist hit
+   must fail), MCP tool contract via FastMCP test client.
+7. Deploy — Dockerfile + helm chart cloned from job-store's shape (single
    replica, private-repo init-container mount for profile/codes, ingress with
    `proxy_buffering off` on the stream route), image built by the existing CI
    pattern, pinned via Homelab GitOps. New hostname (e.g.
@@ -166,7 +233,7 @@ Definition of done for phase 1:
 - The same code unlocks the browser page and streams answers.
 - A revoked code stops working on both surfaces within one reload interval.
 - Nothing personal exists in the public repo; the service refuses to start
-  without `PROFILE_PATH`.
+  without `CORPUS_PATH`, and refuses to start on a redaction-linter hit.
 
 ## Phase 2 — session recording & analytics
 
@@ -188,6 +255,9 @@ Everything phase 1 keeps in memory becomes durable and attributable:
   read-only CLI (`report.py`) before any admin UI exists.
 - Optional push: a note into Trilium or email when a new session starts —
   "someone at <code label> is talking to your agent right now."
+- **Retrieval rung 2 lands here if the corpus has outgrown full-context**:
+  FTS5 index over the corpus in the same SQLite DB, `search_corpus` /
+  `read_doc` tools in the engine loop.
 
 ## Phase 3 candidates (not planned in detail)
 
@@ -204,9 +274,12 @@ Everything phase 1 keeps in memory becomes durable and attributable:
 1. **Hostname** — `agent.k8s.deep13.lol`, something on `devdull.lol`, or a
    dedicated domain? It's employer-visible branding.
 2. **Model** — default `claude-sonnet-5` for quality, or Haiku to start?
-3. **Profile doc** — user writes the curated employer-facing profile in the
-   private repo (the plan treats it as the hard privacy boundary; I can draft
-   a skeleton/checklist of sections, but the content is theirs).
+3. **Corpus seeding** — user curates/redacts the initial corpus in the
+   private repo (the plan treats curation as the hard privacy boundary; I can
+   draft the front-matter template, a redaction checklist, and the denylist
+   skeleton, but the content selection is theirs). Also: roughly how much
+   material exists today (posts x KB, transcripts x hours)? That sizes which
+   retrieval rung phase 1 actually starts on.
 4. **Disclosure/tone** — any constraints on what the agent should volunteer
    vs. only answer when asked (e.g., availability date, location)?
 5. **Recording consent wording** for phase 2 — plain line on the page, or
