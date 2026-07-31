@@ -69,6 +69,21 @@ and any code can be revoked without affecting the others.
   "pennies" — acceptable for the purpose, but per-code budgets are stated in
   dollars for a reason (below).
 
+**Orchestration framework — considered and declined (decision record)**
+- LangChain / LlamaIndex / AutoGen were evaluated as an engine layer; the
+  engine stays on the direct Messages API. Reasons: (1) the cost model
+  depends on precise `cache_control` placement over byte-stable system
+  blocks — abstraction layers that rebuild message arrays are where cache
+  hits silently die; (2) the workload is one persona + a small tool loop —
+  AutoGen targets multi-agent teams (and is mid-merge into Microsoft's Agent
+  Framework), LangChain pays off for multi-provider chain composition we
+  don't have; (3) LlamaIndex's strength is heavy ingestion/vector pipelines,
+  which the retrieval ladder deliberately avoids at rungs 1–2 (curated
+  markdown + FTS5 needs no framework). Revisit only at rung 3, where
+  LlamaIndex's ingestion utilities may earn a place in the embeddings
+  pipeline; a framework adopted earlier would be dependency weight and
+  public-endpoint attack surface without payoff.
+
 **Runtime**
 - FTS5 (needed for retrieval rung 2) ships in `python:3.13-slim`'s bundled
   SQLite but **not** in `python:3.12-slim`. The image pins 3.13 and asserts
