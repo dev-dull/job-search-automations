@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app.kubernetes.io/name: candidate-agent
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate        # single-process rule (see PLAN.md); no overlap
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: candidate-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: candidate-agent
+    spec:
+      {{- if .Values.contentSync.git.enabled }}
+      initContainers:
+        - name: clone-content
+          image: alpine/git:2.45.2
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              mkdir -p /root/.ssh
+              cp /ssh/ssh-privatekey /root/.ssh/id_ed25519
+              chmod 600 /root/.ssh/id_ed25519
+              export GIT_SSH_COMMAND="ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new"
+              git clone --depth 1 --branch {{ .Values.contentSync.git.branch }} \
+                {{ .Values.contentSync.git.repo }} /content
+          volumeMounts:
+            - { name: content, mountPath: /content }
+            - { name: clone-key, mountPath: /ssh, readOnly: true }
+      {{- end }}
+      containers:
+        - name: candidate-agent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8000
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.apiKeySecret.name }}
+                  key: {{ .Values.apiKeySecret.key }}
+            {{- range $k, $v := .Values.env }}
+            {{- if $v }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- end }}
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            initialDelaySeconds: 3
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources: {{ .Values.resources | toYaml | nindent 12 }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            {{- if .Values.contentSync.git.enabled }}
+            - { name: content, mountPath: /content, readOnly: true }
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        {{- if .Values.contentSync.git.enabled }}
+        # Content refresh: the pull interval bounds revocation latency.
+        # Failures log LOUDLY (no `|| true`) so a stale corpus is visible.
+        - name: content-refresh
+          image: alpine/git:2.45.2
+          command: ["sh", "-c"]
+          args:
+            - |
+              cp /ssh/ssh-privatekey /tmp/id && chmod 600 /tmp/id
+              export GIT_SSH_COMMAND="ssh -i /tmp/id -o StrictHostKeyChecking=accept-new"
+              while true; do
+                sleep {{ .Values.contentSync.git.intervalSeconds }}
+                if ! git -C /content pull --ff-only; then
+                  echo "CONTENT SYNC FAILED at $(date -u) — codes/corpus may be stale" >&2
+                fi
+              done
+          volumeMounts:
+            - { name: content, mountPath: /content }
+            - { name: clone-key, mountPath: /ssh, readOnly: true }
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+        {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.contentSync.git.enabled }}
+        - name: content
+          emptyDir: {}
+        - name: clone-key
+          secret:
+            secretName: {{ .Values.contentSync.git.sshKeySecret }}
+            defaultMode: 0400
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}

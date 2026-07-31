@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Candidate agent</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; max-width: 28rem; margin: 15vh auto;
+         padding: 0 1rem; line-height: 1.5; }
+  input, button { font-size: 1rem; padding: .6rem .8rem; border-radius: .5rem;
+                  border: 1px solid #8884; }
+  button { cursor: pointer; }
+  form { display: flex; gap: .5rem; margin-top: 1rem; }
+  input { flex: 1; }
+  .fine { opacity: .7; font-size: .85rem; margin-top: 2rem; }
+</style>
+</head>
+<body>
+  <h1>Candidate agent</h1>
+  <p>This is an AI agent that answers questions about a job candidate, on
+     their behalf. Enter the access code you were given to start.</p>
+  <form method="post" action="/session">
+    <input name="code" placeholder="access code" autocomplete="off"
+           autofocus required>
+    <button type="submit">Enter</button>
+  </form>
+  <p class="fine">You are talking to an AI agent, not the candidate.
+     Answers are grounded in documents the candidate published for this
+     purpose.</p>
+</body>
+</html>

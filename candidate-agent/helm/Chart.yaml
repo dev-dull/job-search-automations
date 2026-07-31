@@ -1,0 +1,6 @@
+apiVersion: v2
+name: candidate-agent
+description: Access-code-gated AI agent employers can query about a candidate
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

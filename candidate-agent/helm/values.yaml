@@ -1,0 +1,43 @@
+image:
+  repository: ghcr.io/OWNER/candidate-agent
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# ANTHROPIC_API_KEY comes from an existing Secret (never a value).
+apiKeySecret:
+  name: candidate-agent-anthropic
+  key: api-key
+
+env:
+  ANTHROPIC_MODEL: claude-sonnet-5
+  CORPUS_PATH: /content/corpus
+  ACCESS_CODES_PATH: /content/codes.txt
+  REDACTION_DENYLIST_PATH: /content/denylist.txt
+  CONTACT_EMAIL: ""
+
+# Private-content delivery. With git enabled, an init container clones the
+# repo into a shared volume and a sidecar pulls on an interval — the interval
+# bounds revocation latency. sshKeySecret must hold a read-only deploy key at
+# key `ssh-privatekey`. Alternatively disable git and provide your own volume
+# via extraVolumes/extraVolumeMounts.
+contentSync:
+  git:
+    enabled: true
+    repo: ""                 # e.g. git@github.com:you/private-content.git
+    branch: main
+    sshKeySecret: candidate-agent-clone-key
+    intervalSeconds: 60
+
+ingress:
+  enabled: false             # supply your own route/ingress if disabled
+  className: ""
+  host: ""                   # employer-visible hostname
+  tls: []                    # standard ingress TLS blocks
+  annotations: {}
+
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { cpu: 500m, memory: 512Mi }
+
+extraVolumes: []
+extraVolumeMounts: []

@@ -1,0 +1,54 @@
+name: Build candidate-agent image
+
+# Builds and pushes the candidate-agent container image to GHCR on source
+# changes. Tests run first — an image never ships from a red suite.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'candidate-agent/**'
+      - '!candidate-agent/helm/**'
+      - '!candidate-agent/tests/**'
+      - '!candidate-agent/**.md'
+      - '.github/workflows/build-candidate-agent.yaml'
+  workflow_dispatch:
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/candidate-agent
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -r candidate-agent/requirements.txt httpx
+      - run: python -m unittest discover -s candidate-agent/tests -t candidate-agent
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: candidate-agent
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
