@@ -12,14 +12,23 @@ runs, what domain it answers on, and what personal content it serves are the
 operator's decisions, made at deploy time through runtime configuration —
 none of that lives in this repository.
 
-Two front doors, one brain:
+Three front doors, one brain — ordered by how little the employer must do:
 
-1. **The employer's own chat client** — the service is a remote MCP server; a
-   recruiter adds one URL (plus an access code) to Claude Code, Claude
-   Desktop, claude.ai custom connectors, or ChatGPT developer mode, and their
-   assistant can interview the agent directly.
-2. **A browser URL** — a minimal chat page for people who don't run an AI
-   client at all: enter the access code, start asking.
+1. **A browser URL** — a minimal chat page for people who don't run an AI
+   client at all: enter the access code, start asking. Zero setup, works for
+   everyone.
+2. **Zero-install fetch, from their own AI** — the employer pastes one URL
+   into claude.ai, ChatGPT, or Gemini and asks their assistant to interview
+   the agent; the assistant makes plain HTTP GETs to an `ask` endpoint. No
+   connector, no configuration, nothing installed — web fetch is the one
+   capability nearly every assistant already has.
+3. **A remote MCP connector, from their own AI** — for the deepest
+   integration: the recruiter adds the server URL (plus code) to Claude Code,
+   Claude Desktop, claude.ai custom connectors, or ChatGPT developer mode.
+   Fully remote — Streamable HTTP runs no code on the employer's machine —
+   but adding a connector is a configuration step some users won't take and
+   some corporate tenants restrict, which is why it's the third door, not the
+   first.
 
 Access is gated by **per-employer unique codes** so access is attributable to
 whoever the code was issued to (full conversation records arrive in phase 2),
@@ -104,6 +113,7 @@ baked in.
 
 ```
 employer's Claude/ChatGPT ──MCP (Streamable HTTP + Bearer code)──┐
+employer's Claude/ChatGPT ──web fetch: GET /c/<code>/ask?q=… ────┤
                                                                  ▼
 employer's browser ──/  code-entry page → SSE chat ──▶  candidate-agent (FastAPI)
                                                         ├─ auth: access-code file (ph.1) / table (ph.2)
@@ -137,6 +147,38 @@ browser uses. Consequences, all deliberate:
 
 A small `get_profile_summary()` tool/resource returns a short public "card"
 (name, headline, links) so client UIs have something to render immediately.
+
+**The fetch surface (verified July 2026).** claude.ai, ChatGPT, and Gemini
+can all fetch user-pasted URLs mid-conversation, repeatedly, with query
+parameters — which makes a plain GET endpoint an API their assistants can
+drive with no setup:
+
+- `GET /c/<code>` — a small markdown landing page: who this agent is, how to
+  ask (`/c/<code>/ask?q=…`), and ground rules. The employer pastes this one
+  URL; their assistant reads the instructions and takes it from there.
+- `GET /c/<code>/ask?q=<question>` — runs the same server-side answer engine,
+  returns a markdown answer. Stateless by design (each fetch independent);
+  the engine threads best-effort continuity keyed on the code + client, same
+  spirit as the MCP session handling.
+- Constraints honored from live client behavior: keep total URLs short
+  (Claude's fetcher caps around 250 chars — codes stay compact and the
+  landing page says "ask concise questions"); answers are served
+  `Cache-Control: no-store` because at least one assistant caches fetches for
+  ~15 minutes (a follow-up asking the same question should still work);
+  responses stay small (tens of KB).
+- `robots.txt` allows the known assistant fetcher agents (`Claude-User`,
+  `ChatGPT-User`, Google's fetcher) on `/c/*` and disallows everything else —
+  the gate is the code, not obscurity, but there's no reason to invite
+  generic crawlers.
+- Reach check from the research: assistant web fetch is available in more
+  corporate environments than custom connectors, but not all (some tenants
+  disable web tools entirely) — which is exactly why the browser chat page
+  remains door #1.
+
+Not built, with reasons recorded: A2A agent cards (no consumer assistant
+acts as an A2A client yet), custom GPT Actions (requires the recruiter to
+build a GPT, and enterprise tenants commonly block them — revisit only as an
+opt-in extra), email-in agents (async, poor fit).
 
 ## Knowledge corpus — well beyond the resume
 
@@ -254,6 +296,11 @@ Where the code travels:
   the code lands in access logs — so app logs scrub `/mcp/*` paths (operators
   should scrub their ingress logs likewise), and those codes default to
   shorter expiry.
+- Fetch surface: the code is inherently URL-carried, so it uses the same
+  `url_auth` opt-in flag as the MCP path form — one flag governs both
+  URL-carried uses, with the same log-scrubbing and shorter-expiry defaults.
+  A code minted for a claude.ai recruiter works for both their connector and
+  their assistant's plain fetches.
 - Browser: code-entry form → server-set HttpOnly cookie (`SameSite=Lax`,
   fresh session ID issued at code entry); `/chat` additionally requires a
   custom header (free via `fetch`, blocks cross-site form posts). The code
@@ -293,6 +340,11 @@ Components (this `candidate-agent/` directory, sibling of `job-board/`):
      `/mcp/<code>` opt-in path handling; `initialize`-capture middleware
      (client name/version, for phase-2 logging); tools:
      `ask_candidate_agent(question)`, `get_profile_summary()`.
+   - `GET /c/<code>` + `GET /c/<code>/ask` — the zero-install fetch surface
+     (markdown responses, `no-store`, url_auth-gated, per-code rate limits
+     shared with the other surfaces).
+   - `GET /robots.txt` — allow known assistant fetchers on `/c/*`, disallow
+     the rest.
    - `GET /` — code-entry page (single template, no JS framework).
    - `POST /chat` + SSE stream — cookie-authed per the codes section;
      in-memory history; client-side reconnect handling (proxies commonly cap
@@ -327,6 +379,10 @@ Definition of done for phase 1:
   https://<host>/mcp` works from a fresh machine, and `ask_candidate_agent`
   answers corpus questions.
 - A `url_auth`-flagged code works via `/mcp/<code>` (the claude.ai path).
+- Pasting `/c/<code>` into a fresh claude.ai or ChatGPT conversation and
+  asking three follow-up questions produces three grounded answers via the
+  fetch surface (the "zero-install demo" — this is the door most recruiters
+  will actually use).
 - The same code unlocks the browser page and streams answers, surviving a
   forced reconnect.
 - A revoked code stops working on both surfaces — including already-open
@@ -344,7 +400,7 @@ Everything phase 1 keeps in memory becomes durable and attributable:
 - SQLite (`AGENT_DB_PATH`, WAL, generous busy timeout — a lesson the
   job-board tools learned the hard way) with:
   - `codes` — the phase-1 file promoted to a table.
-  - `sessions` — code, surface (`mcp` | `web`), started/last-active/ended,
+  - `sessions` — code, surface (`mcp` | `web` | `fetch`), started/last-active/ended,
     IP (proxy headers), browser `User-Agent`, and for MCP the client
     name/version captured by the `initialize` middleware. For `web` a session
     is a real conversation; for `mcp` it is a transport session (best-effort
