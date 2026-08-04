@@ -123,6 +123,14 @@ class Engine:
                 oldest = min(self._continuity, key=lambda k: self._continuity[k][0])
                 del self._continuity[oldest]
 
+    def _log_usage(self, code: str, usage) -> None:
+        cost = usage_cost_usd(usage)
+        self.limiter.record_spend(code, cost)
+        get = lambda k: getattr(usage, k, 0) or 0   # noqa: E731
+        log.info("usage code=%s in=%d cache_read=%d cache_write=%d out=%d cost=$%.4f",
+                 code, get("input_tokens"), get("cache_read_input_tokens"),
+                 get("cache_creation_input_tokens"), get("output_tokens"), cost)
+
     # -- entry points -------------------------------------------------------
 
     def answer(self, code: str, question: str, continuity_key: str | None = None) -> str:
@@ -133,9 +141,9 @@ class Engine:
         messages = self._history(continuity_key) if continuity_key else []
         messages = messages + [{"role": "user", "content": question}]
         response = self._anthropic().messages.create(
-            model=MODEL, max_tokens=MAX_ANSWER_TOKENS, temperature=0.2,
+            model=MODEL, max_tokens=MAX_ANSWER_TOKENS,
             system=self._system(), messages=messages)
-        self.limiter.record_spend(code, usage_cost_usd(response.usage))
+        self._log_usage(code, response.usage)
         text = "".join(b.text for b in response.content
                        if getattr(b, "type", None) == "text")
         if continuity_key:
@@ -151,9 +159,9 @@ class Engine:
             return
         messages = history + [{"role": "user", "content": question}]
         with self._anthropic().messages.stream(
-                model=MODEL, max_tokens=MAX_ANSWER_TOKENS, temperature=0.2,
+                model=MODEL, max_tokens=MAX_ANSWER_TOKENS,
                 system=self._system(), messages=messages) as stream:
             for text in stream.text_stream:
                 yield text
             final = stream.get_final_message()
-        self.limiter.record_spend(code, usage_cost_usd(final.usage))
+        self._log_usage(code, final.usage)
