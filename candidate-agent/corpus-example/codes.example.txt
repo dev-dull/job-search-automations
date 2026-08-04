@@ -1,0 +1,4 @@
+# Access codes — copy to your private repo as codes.txt.
+# code             | label            | options...
+maple-K7RT-hazel   | Acme Recruiting  | expires=2026-09-30
+birch-Q2ZX-otter   | Beta Search      | url_auth | note=uses claude.ai

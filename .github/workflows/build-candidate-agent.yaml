@@ -11,6 +11,10 @@ on:
       - '!candidate-agent/tests/**'
       - '!candidate-agent/**.md'
       - '.github/workflows/build-candidate-agent.yaml'
+  pull_request:
+    paths:
+      - 'candidate-agent/**'
+      - '.github/workflows/build-candidate-agent.yaml'
   workflow_dispatch:
 
 env:
@@ -29,6 +33,7 @@ jobs:
 
   build:
     needs: test
+    if: github.event_name != 'pull_request'   # PRs test only; main publishes
     runs-on: ubuntu-latest
     permissions:
       contents: read

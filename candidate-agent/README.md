@@ -50,6 +50,13 @@ takes effect within your content-sync interval + ~1 minute, including for
 already-open browser sessions. All counters (rate, budget, failed-attempt
 limits) are in-memory phase-1: they reset on restart.
 
+## Seeding your corpus
+
+Start from [`corpus-example/`](corpus-example/) — a fully synthetic skeleton
+showing the layout, front-matter, codes-file format, and denylist. Copy it
+into your private repo, replace the content, and keep the redaction rules in
+its README.
+
 ## Run it
 
 ```
