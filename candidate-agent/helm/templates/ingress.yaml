@@ -1,0 +1,31 @@
+{{- if .Values.ingress.enabled }}
+# Generic Ingress. Whatever controller you use: TLS required, response
+# buffering must stay off for streaming paths, and note your proxy's
+# write/idle timeouts (the chat page reconnects, but know your limits).
+# Operators on IngressRoute/HTTPRoute-style controllers: disable this and
+# route to the Service instead.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}
+  {{- with .Values.ingress.annotations }}
+  annotations: {{ toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  rules:
+    - host: {{ required "ingress.host is required when ingress.enabled" .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}
+                port: { number: 80 }
+  {{- with .Values.ingress.tls }}
+  tls: {{ toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

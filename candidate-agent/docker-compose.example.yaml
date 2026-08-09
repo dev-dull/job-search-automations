@@ -1,0 +1,25 @@
+# Example deployment for non-k8s operators. Copy, edit paths, and put a
+# TLS-terminating proxy (Caddy, Traefik, nginx, a cloudflared tunnel...) in
+# front — the agent itself speaks plain HTTP on :8000. Your proxy must not
+# buffer streaming responses; check its idle/write timeouts (the chat page
+# reconnects, but know your limits).
+#
+# ./private/ is YOUR content, outside any public repo:
+#   private/corpus/...        the curated, redacted corpus (see PLAN.md)
+#   private/codes.txt         access codes, one per line
+#   private/denylist.txt      strings that must never appear in the corpus
+services:
+  candidate-agent:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set in .env}
+      ANTHROPIC_MODEL: claude-sonnet-5
+      CORPUS_PATH: /content/corpus
+      ACCESS_CODES_PATH: /content/codes.txt
+      REDACTION_DENYLIST_PATH: /content/denylist.txt
+      CONTACT_EMAIL: you@example.com
+    volumes:
+      - ./private:/content:ro
+    restart: unless-stopped

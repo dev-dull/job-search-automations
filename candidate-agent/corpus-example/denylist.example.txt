@@ -1,0 +1,8 @@
+# Redaction denylist — strings that must NEVER appear in the corpus.
+# One per line, case-insensitive substring match. Startup fails loudly on
+# any hit; a hit arriving via live content sync is rejected while the
+# last-good corpus keeps serving.
+# Examples (replace with your own):
+# TargetCorp
+# 555-0123
+# 123 Example Street

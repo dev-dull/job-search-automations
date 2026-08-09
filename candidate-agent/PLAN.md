@@ -344,6 +344,14 @@ strangers hold):
 
 ## Phase 1 — shareable MVP
 
+**Status 2026-08-03: implemented and smoke-verified** (all three surfaces
+against the live Anthropic API, a real Claude Code MCP session, the container
+image incl. the linter fail-hard path, and prompt-cache engagement confirmed
+at $0.078 cold / $0.007 warm on a 19.9k-token corpus). One API correction
+found only by the smoke test: claude-sonnet-5 rejects the `temperature`
+parameter as deprecated — the engine no longer sends it. Deployment items
+below (public reachability) remain operator-side.
+
 Goal: a URL + code the operator can put in an application or hand a
 recruiter. (Operators must clear deployment requirement #1 — public
 reachability — before anything here matters outside their LAN.)

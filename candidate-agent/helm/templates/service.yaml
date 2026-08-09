@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app.kubernetes.io/name: candidate-agent
+spec:
+  selector:
+    app.kubernetes.io/name: candidate-agent
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
