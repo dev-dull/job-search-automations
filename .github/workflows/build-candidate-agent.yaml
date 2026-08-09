@@ -29,7 +29,11 @@ jobs:
         with:
           python-version: '3.13'
       - run: pip install -r candidate-agent/requirements.txt httpx
-      - run: python -m unittest discover -s candidate-agent/tests -t candidate-agent
+      # Run from inside the service dir (matches the documented local
+      # invocation): with a separate -t top dir, discovery would require
+      # tests/ to be an importable package.
+      - run: python -m unittest discover -s tests
+        working-directory: candidate-agent
 
   build:
     needs: test
