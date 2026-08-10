@@ -76,13 +76,21 @@ def _parse_line(line: str) -> Code | None:
 
 
 class CodeTable:
-    """Loads the code file, reloading when its mtime changes."""
+    """Loads the code file, reloading when its mtime changes. With a store
+    attached (phase 2), the file is synced into the DB on reload and lookups
+    read from the DB — so CLI-minted codes work alongside file codes while
+    file-removal revocation keeps its phase-1 semantics."""
 
     def __init__(self, path: str | None = None):
         self.path = path or os.environ.get("ACCESS_CODES_PATH")
         self._mtime: float | None = None
         self._codes: dict[str, Code] = {}
         self._lock = threading.Lock()
+        self._store = None
+
+    def attach_store(self, store) -> None:
+        self._store = store
+        self._mtime = None          # force a resync on next lookup
 
     def _refresh(self) -> None:
         if not self.path or not os.path.exists(self.path):
@@ -99,6 +107,19 @@ class CodeTable:
         with self._lock:
             self._codes = table
             self._mtime = mtime
+        if self._store is not None:
+            self._store.sync_codes_from_file(list(table.values()))
+
+    def _get(self, code: str) -> Code | None:
+        if self._store is not None:
+            row = self._store.get_code(code)
+            if row is None:
+                return None
+            return Code(code=row["code"], label=row["label"],
+                        expires=row["expires"], url_auth=bool(row["url_auth"]),
+                        revoked=bool(row["revoked"]), note=row["note"])
+        with self._lock:
+            return self._codes.get(code)
 
     def lookup(self, code: str | None) -> Code | None:
         """The usable Code for this string, else None. Revoked/expired/absent
@@ -106,8 +127,7 @@ class CodeTable:
         if not code:
             return None
         self._refresh()
-        with self._lock:
-            c = self._codes.get(code.strip())
+        c = self._get(code.strip())
         return c if c and c.usable() else None
 
     def status(self, code: str | None) -> str:
@@ -115,8 +135,7 @@ class CodeTable:
         if not code:
             return "unknown"
         self._refresh()
-        with self._lock:
-            c = self._codes.get(code.strip())
+        c = self._get(code.strip())
         if c is None:
             return "unknown"
         return "ok" if c.usable() else "expired"

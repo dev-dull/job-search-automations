@@ -20,6 +20,12 @@ services:
       ACCESS_CODES_PATH: /content/codes.txt
       REDACTION_DENYLIST_PATH: /content/denylist.txt
       CONTACT_EMAIL: you@example.com
+      AGENT_DB_PATH: /data/agent.db      # phase 2: sessions/transcripts/budgets
+      # ADMIN_TOKEN: set-to-enable /admin/summary.json
     volumes:
       - ./private:/content:ro
+      - agent-data:/data
     restart: unless-stopped
+
+volumes:
+  agent-data:
