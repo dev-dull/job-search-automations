@@ -1,0 +1,99 @@
+name: Claude PR Review
+
+# Automatically reviews every pull request when it's opened or updated.
+# Modeled on dev-dull/single-use-software's claude-review.yaml.
+# Requires a repository secret named ANTHROPIC_API_KEY
+#   (Settings → Secrets and variables → Actions → New repository secret).
+# Uses the built-in GITHUB_TOKEN, so no Claude GitHub App install is needed.
+# Fork PRs are skipped (they have no secret + a read-only token) rather than
+# failed — see the head-repo guard below.
+
+on:
+  pull_request:
+    # ready_for_review covers draft -> ready with no further push (the draft
+    # guard below would otherwise leave it unreviewed until the next commit).
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# One review per PR. cancel-in-progress is false so a superseded run isn't
+# killed mid-write, which would freeze its progress-tracking comment.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  review:
+    # Skip drafts, and skip fork PRs (their runs have no ANTHROPIC_API_KEY and a
+    # read-only token, so they'd fail rather than no-op).
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      # Pin helm rather than default to `latest`: (1) chart rendering here
+      # shouldn't shift under a future helm release, and (2) helm 4.x closes
+      # the `--post-renderer` arbitrary-executable path that in helm 3 was a
+      # clean escape from the `Bash(helm template:*)` allowlist.
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.2.3
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Use the workflow's built-in token instead of the Claude GitHub App,
+          # so no app install is needed. GITHUB_TOKEN inherits the permissions
+          # block above (pull-requests/issues: write) for posting comments.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          track_progress: true
+          prompt: |
+            Review this pull request. This repo is a PUBLIC job-search toolkit
+            that other people adopt for their own job hunts, so weigh these
+            areas:
+
+            - **The rule that overrides everything: nothing personal or
+              operator-specific in tracked files.** No hostnames, LAN/IP
+              addresses, personal names, resume/preference content, real
+              deal-breaker lists, box names, or deployment specifics. All
+              personal inputs must be runtime-provided paths (env vars), and
+              example/fixture content must be clearly synthetic. Flag ANY leak
+              as the highest-severity finding.
+            - Correctness and likely bugs in the changed code.
+            - Spend and abuse guardrails: authoritative scoring and the
+              candidate-agent's answers cost real API money. Watch for paths
+              that bypass dedupe-before-POST, send `force` in bulk, weaken
+              rate limits / budgets / failed-attempt limiting, or let
+              access-code auth (bearer, url_auth flag, cookie re-validation)
+              regress. Also: the candidate-agent's prompt-cache economics
+              depend on byte-stable cached system blocks — flag anything that
+              interpolates per-request data into them.
+            - Politeness to other people's services: producers must respect
+              robots.txt, rate-limit per host, send an honest User-Agent, and
+              never auto-apply to anything.
+            - Conventions: job-board/ side is stdlib-only (urllib, not
+              requests); SQLite is single-writer (one process; WAL + busy
+              timeout); comments explain *why*; tests use synthetic fixtures
+              only.
+            - Helm chart correctness: when charts/ under job-board/job-store/
+              or candidate-agent/ change, render with `helm template` and
+              check values wiring. (Comparing against the base branch isn't
+              available here — reason from the head render plus the PR diff.)
+            - Test coverage gaps for the above.
+
+            Prioritize a small number of high-confidence, actionable findings
+            over exhaustiveness. Match the repo's existing style; don't nitpick
+            formatting. If the PR looks good, say so briefly.
+
+            Post specific issues as inline comments on the relevant lines using
+            mcp__github_inline_comment__create_inline_comment (with confirmed: true),
+            and put a short overall summary in your tracked comment.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(helm template:*),Bash(helm lint:*)"
