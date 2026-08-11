@@ -54,6 +54,13 @@ spec:
               value: {{ $v | quote }}
             {{- end }}
             {{- end }}
+            {{- if not .Values.persistence.enabled }}
+            # No /data volume without persistence; fall back to the tmp
+            # emptyDir so the image's baked AGENT_DB_PATH can't crashloop a
+            # read-only rootfs. Recording/limits reset on restart in this mode.
+            - name: AGENT_DB_PATH
+              value: /tmp/agent.db
+            {{- end }}
             {{- if .Values.adminTokenSecret.name }}
             - name: ADMIN_TOKEN
               valueFrom:
