@@ -108,7 +108,9 @@ def _mcp_code(request: Request | None = None) -> codes_mod.Code | None:
 def _mcp_session_key(code: codes_mod.Code) -> str:
     try:
         from fastmcp.server.dependencies import get_http_headers
-        sid = get_http_headers().get("mcp-session-id", "")
+        # include_all: FastMCP strips MCP-transport headers by default, and
+        # mcp-session-id is exactly the one we need for session grouping.
+        sid = get_http_headers(include_all=True).get("mcp-session-id", "")
     except Exception:                                    # noqa: BLE001
         sid = ""
     return f"mcp:{code.code}:{sid}"
