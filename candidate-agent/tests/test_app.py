@@ -252,6 +252,19 @@ class SurfaceTest(unittest.TestCase):
                             headers={b"X-Admin-Token": "wröng".encode("latin-1")})
         self.assertEqual(r.status_code, 401)
 
+    def test_admin_non_ascii_token_authenticates(self):
+        # A non-ASCII ADMIN_TOKEN must WORK, not 401 forever (PR #75 review):
+        # utf-8 wire bytes -> latin-1 decode -> latin-1 re-encode round-trips.
+        saved = os.environ["ADMIN_TOKEN"]
+        os.environ["ADMIN_TOKEN"] = "töken"
+        try:
+            r = self.client.get(
+                "/admin/summary.json",
+                headers={b"X-Admin-Token": "töken".encode("utf-8")})
+            self.assertEqual(r.status_code, 200)
+        finally:
+            os.environ["ADMIN_TOKEN"] = saved
+
     def test_recorded_exchange_carries_real_cost(self):
         # Locks the token -> usage_cost_usd -> DB chain end to end.
         self._enter()

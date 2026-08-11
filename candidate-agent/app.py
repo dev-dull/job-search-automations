@@ -286,11 +286,13 @@ def admin_summary(request: Request):
     ip = _client_ip(request)
     if not _admin_attempts_ok(ip):
         return JSONResponse({"error": "too many attempts"}, status_code=429)
-    # Compare BYTES: compare_digest on str raises TypeError on non-ASCII —
-    # which would 500 before the failed attempt is recorded (and permanently,
-    # for a non-ASCII ADMIN_TOKEN).
-    supplied = request.headers.get("x-admin-token", "").encode("utf-8")
-    if not secrets.compare_digest(supplied, token.encode("utf-8")):
+    # Compare BYTES, restoring each side's actual bytes: Starlette decodes
+    # headers as latin-1 (so latin-1 re-encode round-trips the wire bytes),
+    # and env values may carry surrogate-escaped invalid UTF-8 (os.fsencode
+    # round-trips those). A str compare_digest would TypeError on non-ASCII;
+    # a utf-8 re-encode would mismatch every non-ASCII token.
+    supplied = request.headers.get("x-admin-token", "").encode("latin-1")
+    if not secrets.compare_digest(supplied, os.fsencode(token)):
         db.bump(f"adminfail:{ip}", 1, 3600)
         db.bump("adminfail:GLOBAL", 1, 3600)
         return JSONResponse({"error": "unauthorized"}, status_code=401)
