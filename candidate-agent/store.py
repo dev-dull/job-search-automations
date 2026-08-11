@@ -89,6 +89,17 @@ class Store:
         conn.commit()
         conn.execute("PRAGMA journal_mode = WAL")
         conn.commit()
+        # Sweep stale counters on startup: bounded table growth, and expired
+        # fail:<ip> rows stop retaining IPs beyond their window (the README's
+        # own personal-data guidance applies to us too). Window numbers are
+        # only comparable within one window size, so prune per kind.
+        import time as _time
+        hour_w, day_w = int(_time.time() // 3600), int(_time.time() // 86400)
+        conn.execute("DELETE FROM counters WHERE (key LIKE 'req:%' OR "
+                     "key LIKE 'fail:%') AND window < ?", (hour_w,))
+        conn.execute("DELETE FROM counters WHERE key LIKE 'spend:%' "
+                     "AND window < ?", (day_w,))
+        conn.commit()
         conn.close()
 
     def _conn(self) -> sqlite3.Connection:
@@ -99,15 +110,23 @@ class Store:
     # -- codes --------------------------------------------------------------
 
     def sync_codes_from_file(self, parsed_codes: list) -> None:
-        """Replace all source='file' rows to match the file exactly. CLI-minted
-        rows are untouched, preserving both minting paths."""
+        """Sync source='file' rows to the file WITHOUT deleting history: rows
+        absent from the file are tombstoned (revoked), not removed, so a code
+        revoked by deleting its line keeps its sessions/cost in every rollup —
+        revocation is every code's normal end state and attribution is the
+        point of phase 2. Re-adding a line un-revokes (the file stays
+        authoritative); created_at survives resyncs. CLI-minted rows are
+        untouched, preserving both minting paths."""
         with self._lock, self._conn() as conn:
-            conn.execute("DELETE FROM codes WHERE source = 'file'")
+            conn.execute("UPDATE codes SET revoked = 1 WHERE source = 'file'")
             for c in parsed_codes:
                 conn.execute(
-                    "INSERT OR REPLACE INTO codes "
+                    "INSERT INTO codes "
                     "(code, label, expires, url_auth, revoked, note, source, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, 'file', ?)",
+                    "VALUES (?, ?, ?, ?, ?, ?, 'file', ?) "
+                    "ON CONFLICT(code) DO UPDATE SET label=excluded.label, "
+                    "expires=excluded.expires, url_auth=excluded.url_auth, "
+                    "revoked=excluded.revoked, note=excluded.note, source='file'",
                     (c.code, c.label, c.expires, int(c.url_auth),
                      int(c.revoked), c.note, _now()))
 
@@ -166,7 +185,9 @@ class Store:
 
     def record_exchange(self, session_id: str, question: str, answer: str,
                         usage=None, cost_usd: float = 0.0) -> None:
-        get = (usage.get if isinstance(usage, dict)
+        # Both branches must default missing keys to 0 — the token columns are
+        # NOT NULL, and a None here would silently drop the whole exchange.
+        get = ((lambda k, d=0: usage.get(k, d) or 0) if isinstance(usage, dict)
                else lambda k, d=0: getattr(usage, k, d) or 0) if usage else lambda k, d=0: 0
         now = _now()
         with self._lock, self._conn() as conn:

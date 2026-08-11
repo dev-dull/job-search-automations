@@ -41,6 +41,35 @@ class CodeSyncTest(unittest.TestCase):
         self.assertIsNone(self.table.lookup("file-code-1"))
         self.assertEqual(self.table.lookup("other-code-2").label, "Other Co")
 
+    def test_removed_code_keeps_its_history_in_the_rollup(self):
+        # Revocation is every code's end state; its cost attribution must
+        # survive it (review finding on PR #74).
+        self.table.lookup("file-code-1")                 # sync into DB
+        self.db.touch_session("web:s", "file-code-1", "web")
+        self.db.record_exchange("web:s", "q", "a", None, cost_usd=0.05)
+        created = self.db.get_code("file-code-1")["created_at"]
+        self._rewrite("other-code-2 | Other Co\n")       # revoke by removal
+        self.assertIsNone(self.table.lookup("file-code-1"))
+        summary = {r["code"]: r for r in self.db.summary()}
+        self.assertIn("file-code-1", summary)            # tombstoned, not erased
+        self.assertEqual(summary["file-code-1"]["revoked"], 1)
+        self.assertAlmostEqual(summary["file-code-1"]["cost_usd"], 0.05)
+        # Re-adding the line un-revokes (file stays authoritative) and
+        # created_at survives the resync churn.
+        self._rewrite("file-code-1 | File Co | url_auth\n")
+        self.assertEqual(self.table.lookup("file-code-1").label, "File Co")
+        self.assertEqual(self.db.get_code("file-code-1")["created_at"], created)
+
+    def test_partial_usage_dict_records_with_zero_defaults(self):
+        # A dict missing token keys must not NULL a NOT NULL column and
+        # silently lose the exchange (review finding on PR #74).
+        db = _db(self)
+        db.touch_session("s", "c", "web")
+        db.record_exchange("s", "q", "a", {"output_tokens": 5}, cost_usd=0.01)
+        t = db.transcript("s")
+        self.assertEqual(len(t), 2)
+        self.assertEqual(t[1]["content"], "a")
+
     def test_cli_codes_survive_file_sync(self):
         self.db.upsert_cli_code("cli-code-9", "Minted Co", "2099-01-01", True)
         self._rewrite("file-code-1 | File Co\n")     # triggers resync

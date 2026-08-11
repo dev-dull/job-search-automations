@@ -223,6 +223,31 @@ class SurfaceTest(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("codes", r.json())
 
+    def test_admin_404_when_token_unset(self):
+        saved = os.environ.pop("ADMIN_TOKEN")
+        try:
+            self.assertEqual(
+                self.client.get("/admin/summary.json").status_code, 404)
+        finally:
+            os.environ["ADMIN_TOKEN"] = saved
+
+    def test_admin_guessing_hits_the_limiter(self):
+        import codes as codes_mod
+        for _ in range(codes_mod.FAILED_ATTEMPTS_PER_IP_HOUR):
+            self.client.get("/admin/summary.json",
+                            headers={"X-Admin-Token": "wrong"})
+        r = self.client.get("/admin/summary.json",
+                            headers={"X-Admin-Token": "test-admin-token"})
+        self.assertEqual(r.status_code, 429)     # even the right token: locked
+
+    def test_recorded_exchange_carries_real_cost(self):
+        # Locks the token -> usage_cost_usd -> DB chain end to end.
+        self._enter()
+        self.client.post("/chat", json={"message": "cost me"},
+                         headers={"X-Candidate-Agent": "1"})
+        row = {r["code"]: r for r in app_mod.db.summary()}["plain-code-1"]
+        self.assertGreater(row["cost_usd"], 0)
+
     def test_disclosure_present(self):
         self.assertIn("recorded", self.client.get("/").text)
         self.assertIn("recorded", self.client.get("/c/urlok-code-2").text)

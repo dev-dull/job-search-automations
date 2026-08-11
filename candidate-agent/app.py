@@ -274,7 +274,14 @@ def admin_summary(request: Request):
     if not token:
         return JSONResponse({"error": "admin disabled (ADMIN_TOKEN unset)"},
                             status_code=404)
-    if request.headers.get("x-admin-token") != token:
+    # Same failed-attempt limiting as every other credential path — this is
+    # the endpoint that returns the personal-data rollup — plus a
+    # constant-time compare.
+    ip = _client_ip(request)
+    if not limiter.attempts_ok(ip):
+        return JSONResponse({"error": "too many attempts"}, status_code=429)
+    if not secrets.compare_digest(request.headers.get("x-admin-token", ""), token):
+        limiter.record_failed_attempt(ip)
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     return JSONResponse({"codes": db.summary()})
 
