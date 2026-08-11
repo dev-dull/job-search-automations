@@ -54,7 +54,7 @@ spec:
               value: {{ $v | quote }}
             {{- end }}
             {{- end }}
-            {{- if and (not .Values.persistence.enabled) (not (hasKey .Values.env "AGENT_DB_PATH")) }}
+            {{- if and (not .Values.persistence.enabled) (not (get (default dict .Values.env) "AGENT_DB_PATH")) }}
             # No /data volume without persistence; fall back to the tmp
             # emptyDir so the image's baked AGENT_DB_PATH can't crashloop a
             # read-only rootfs. Recording/limits reset on restart in this mode.
