@@ -43,12 +43,18 @@ maple-K7RT-hazel  | Acme Corp   | expires=2026-08-30
 birch-Q2ZX-otter  | Beta Search | url_auth | note=met at conf
 ```
 
+Phase 2 adds a second way to manage codes: `python3 mint_code.py "Acme
+Recruiting" --days 14 [--url-auth]` mints a code directly in the database
+(and `--revoke <code>` revokes it). File codes and CLI codes coexist — the
+file stays authoritative for its own entries (delete a line to revoke), and
+the sync never touches CLI-minted rows.
+
 `url_auth` lets the code travel in URLs (`/c/<code>` fetch surface and the
 `/mcp/<code>` claude.ai form) — issue it deliberately and prefer shorter
 expiries there. Revoke by deleting the line (or adding `revoked`); revocation
 takes effect within your content-sync interval + ~1 minute, including for
 already-open browser sessions. All counters (rate, budget, failed-attempt
-limits) are in-memory phase-1: they reset on restart.
+limits) are stored in the phase-2 database and survive restarts.
 
 ## Seeding your corpus
 
@@ -75,6 +81,33 @@ left as values. Whatever fronts it must terminate TLS, pass streaming
 responses unbuffered, and be reachable from the public internet — see
 PLAN.md's deployment requirements. Run single-process only
 (`uvicorn --workers 1`; the Dockerfile already does).
+
+## Session recording (phase 2)
+
+Every conversation is recorded to SQLite at `AGENT_DB_PATH` (default
+`/data/agent.db` in the container — mount a volume): sessions carry the
+surface (`web` | `mcp` | `fetch`), IP, browser User-Agent, and — for MCP —
+the connecting client's name/version from the `initialize` handshake;
+messages carry full transcripts with per-message token counts and cost.
+Honest semantics: a `web` session is a real conversation; an `mcp` session
+is a transport session (best-effort grouping); a `fetch` session is one
+code's traffic for one UTC day. Both chat surfaces and the MCP tool
+description disclose that conversations are recorded.
+
+Reading it:
+
+```
+python3 report.py                        # per-code rollup: sessions, messages, cost, last seen
+python3 report.py --code <code>          # sessions for one code
+python3 report.py --session <session-id> # full transcript
+```
+
+`GET /admin/summary.json` returns the same rollup over HTTP when
+`ADMIN_TOKEN` is set (send it as `X-Admin-Token`); it 404s when unset.
+
+You are storing conversations with identifiable metadata — treat the DB as
+personal data: keep it on the private side, and say so to the people talking
+to the agent (the built-in disclosure lines do).
 
 ## Development
 

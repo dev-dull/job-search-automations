@@ -16,6 +16,8 @@ spec:
       labels:
         app.kubernetes.io/name: candidate-agent
     spec:
+      securityContext:
+        fsGroup: 1000          # PVC mounts writable by the non-root app user
       {{- if .Values.contentSync.git.enabled }}
       initContainers:
         - name: clone-content
@@ -52,6 +54,13 @@ spec:
               value: {{ $v | quote }}
             {{- end }}
             {{- end }}
+            {{- if .Values.adminTokenSecret.name }}
+            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.adminTokenSecret.name }}
+                  key: {{ .Values.adminTokenSecret.key }}
+            {{- end }}
           readinessProbe:
             httpGet: { path: /healthz, port: 8000 }
             initialDelaySeconds: 3
@@ -65,6 +74,9 @@ spec:
             allowPrivilegeEscalation: false
           volumeMounts:
             - { name: tmp, mountPath: /tmp }
+            {{- if .Values.persistence.enabled }}
+            - { name: data, mountPath: /data }
+            {{- end }}
             {{- if .Values.contentSync.git.enabled }}
             - { name: content, mountPath: /content, readOnly: true }
             {{- end }}
@@ -97,6 +109,11 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-data
+        {{- end }}
         {{- if .Values.contentSync.git.enabled }}
         - name: content
           emptyDir: {}

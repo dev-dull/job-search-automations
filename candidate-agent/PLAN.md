@@ -418,6 +418,12 @@ Definition of done for phase 1:
 
 ## Phase 2 — session recording & analytics
 
+**Status 2026-08-10: implemented** (store.py: codes/sessions/messages/counters;
+recording wired through all three surfaces; durable rate/budget counters;
+disclosure lines; mint_code.py + report.py; /admin/summary.json behind
+ADMIN_TOKEN; DB volume + fsGroup in the image/chart). Retrieval rung 2
+remains deliberately unbuilt — the corpus hasn't outgrown full context.
+
 Everything phase 1 keeps in memory becomes durable and attributable:
 
 - SQLite (`AGENT_DB_PATH`, WAL, generous busy timeout — a lesson the

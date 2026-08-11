@@ -78,9 +78,12 @@ Rules, non-negotiable:
 
 
 class Engine:
-    def __init__(self, corpus, limiter):
+    def __init__(self, corpus, limiter, recorder=None):
         self.corpus = corpus
         self.limiter = limiter
+        # recorder(session_ref, question, answer, usage, cost_usd) — phase-2
+        # transcript hook; None disables recording.
+        self.recorder = recorder
         self._client = None
         self._continuity: dict[str, tuple[float, list]] = {}
         self._lock = threading.Lock()
@@ -123,17 +126,27 @@ class Engine:
                 oldest = min(self._continuity, key=lambda k: self._continuity[k][0])
                 del self._continuity[oldest]
 
-    def _log_usage(self, code: str, usage) -> None:
+    def _log_usage(self, code: str, usage) -> float:
         cost = usage_cost_usd(usage)
         self.limiter.record_spend(code, cost)
         get = lambda k: getattr(usage, k, 0) or 0   # noqa: E731
         log.info("usage code=%s in=%d cache_read=%d cache_write=%d out=%d cost=$%.4f",
                  code, get("input_tokens"), get("cache_read_input_tokens"),
                  get("cache_creation_input_tokens"), get("output_tokens"), cost)
+        return cost
+
+    def _record(self, session_ref, question, answer, usage, cost) -> None:
+        if self.recorder is None or session_ref is None:
+            return
+        try:
+            self.recorder(session_ref, question, answer, usage, cost)
+        except Exception as e:                       # noqa: BLE001
+            log.error("transcript recording failed (answer still served): %s", e)
 
     # -- entry points -------------------------------------------------------
 
-    def answer(self, code: str, question: str, continuity_key: str | None = None) -> str:
+    def answer(self, code: str, question: str, continuity_key: str | None = None,
+               session_ref: str | None = None) -> str:
         """Non-streaming answer (MCP tool + fetch surface)."""
         if not self.limiter.budget_ok(code):
             return ("This agent's daily budget is exhausted. Please try again "
@@ -143,14 +156,16 @@ class Engine:
         response = self._anthropic().messages.create(
             model=MODEL, max_tokens=MAX_ANSWER_TOKENS,
             system=self._system(), messages=messages)
-        self._log_usage(code, response.usage)
+        cost = self._log_usage(code, response.usage)
         text = "".join(b.text for b in response.content
                        if getattr(b, "type", None) == "text")
         if continuity_key:
             self._remember(continuity_key, question, text)
+        self._record(session_ref, question, text, response.usage, cost)
         return text
 
-    def stream_answer(self, code: str, history: list, question: str):
+    def stream_answer(self, code: str, history: list, question: str,
+                      session_ref: str | None = None):
         """Streaming generator for the browser surface. Yields text chunks;
         the caller owns history persistence."""
         if not self.limiter.budget_ok(code):
@@ -158,10 +173,13 @@ class Engine:
                    "tomorrow or contact the candidate directly.")
             return
         messages = history + [{"role": "user", "content": question}]
+        chunks = []
         with self._anthropic().messages.stream(
                 model=MODEL, max_tokens=MAX_ANSWER_TOKENS,
                 system=self._system(), messages=messages) as stream:
             for text in stream.text_stream:
+                chunks.append(text)
                 yield text
             final = stream.get_final_message()
-        self._log_usage(code, final.usage)
+        cost = self._log_usage(code, final.usage)
+        self._record(session_ref, question, "".join(chunks), final.usage, cost)

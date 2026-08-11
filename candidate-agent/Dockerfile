@@ -28,13 +28,17 @@ FROM python:3.13-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
-    HOME=/tmp
+    HOME=/tmp \
+    AGENT_DB_PATH=/data/agent.db
 COPY --from=build /opt/venv /opt/venv
 WORKDIR /app
 COPY *.py ./
 COPY templates ./templates
-RUN useradd --uid 1000 --no-create-home agent
+RUN useradd --uid 1000 --no-create-home agent && \
+    mkdir -p /data && chown 1000 /data
 USER 1000
+# Phase-2 DB lives on a mounted volume (rootfs is read-only in k8s).
+VOLUME /data
 EXPOSE 8000
 # FTS5 assert + single worker (SQLite one-writer rule, phase 2).
 CMD ["sh", "-c", "python -c \"import sqlite3; sqlite3.connect(':memory:').execute('CREATE VIRTUAL TABLE t USING fts5(c)')\" && exec uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips '*'"]

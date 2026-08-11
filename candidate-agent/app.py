@@ -29,6 +29,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Str
 import codes as codes_mod
 import corpus as corpus_mod
 import engine as engine_mod
+import store as store_mod
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 log = logging.getLogger("candidate-agent")
@@ -37,9 +38,16 @@ CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "the candidate")
 SESSION_TTL_S = 12 * 3600
 
 corpus = corpus_mod.Corpus()
+db = store_mod.Store()
 table = codes_mod.CodeTable()
-limiter = codes_mod.Limiter()
-engine = engine_mod.Engine(corpus, limiter)
+table.attach_store(db)
+limiter = store_mod.DurableLimiter(db)          # restart-proof (phase 2)
+engine = engine_mod.Engine(corpus, limiter, recorder=db.record_exchange)
+
+# Best-effort MCP client identity: clientInfo arrives only on `initialize`,
+# before the server assigns a session id, so remember the last client seen
+# per code and attach it when the session row is first touched.
+_mcp_clients: dict[str, tuple[str, str]] = {}
 
 # In-memory browser sessions: sid -> dict(code, history, created, last)
 _sessions: dict[str, dict] = {}
@@ -82,7 +90,8 @@ mcp = FastMCP(
     instructions=(
         "This server answers questions about one job candidate on their "
         "behalf, grounded in their published corpus. Ask natural-language "
-        "questions with ask_candidate_agent."),
+        "questions with ask_candidate_agent. Conversations are recorded and "
+        "reviewed by the candidate."),
 )
 
 
@@ -99,7 +108,9 @@ def _mcp_code(request: Request | None = None) -> codes_mod.Code | None:
 def _mcp_session_key(code: codes_mod.Code) -> str:
     try:
         from fastmcp.server.dependencies import get_http_headers
-        sid = get_http_headers().get("mcp-session-id", "")
+        # include_all: FastMCP strips MCP-transport headers by default, and
+        # mcp-session-id is exactly the one we need for session grouping.
+        sid = get_http_headers(include_all=True).get("mcp-session-id", "")
     except Exception:                                    # noqa: BLE001
         sid = ""
     return f"mcp:{code.code}:{sid}"
@@ -109,15 +120,19 @@ def _mcp_session_key(code: codes_mod.Code) -> str:
 def ask_candidate_agent(question: str) -> str:
     """Ask a natural-language question about the candidate — their employment
     history, skills, projects, or interests. Answers are grounded in the
-    candidate's published corpus."""
+    candidate's published corpus. Conversations are recorded."""
     code = _mcp_code()
     if code is None:
         return "This connection is not authorized. Check the access code."
     if not limiter.allow_request(code.code):
         return "Rate limit reached for this access code; try again later."
     corpus.check_reload()
-    return engine.answer(code.code, question,
-                         continuity_key=_mcp_session_key(code))
+    skey = _mcp_session_key(code)
+    client = _mcp_clients.get(code.code, (None, None))
+    db.touch_session(skey, code.code, "mcp",
+                     client_name=client[0], client_version=client[1])
+    return engine.answer(code.code, question, continuity_key=skey,
+                         session_ref=skey)
 
 
 @mcp.tool
@@ -206,6 +221,10 @@ class _InitializePeek:
                     info = payload.get("params", {}).get("clientInfo", {})
                     log.info("mcp initialize: code=%s client=%s/%s",
                              self._code.label, info.get("name"), info.get("version"))
+                    _mcp_clients[self._code.code] = (
+                        info.get("name"), info.get("version"))
+                    if len(_mcp_clients) > 200:
+                        _mcp_clients.pop(next(iter(_mcp_clients)))
                 except Exception:                        # noqa: BLE001
                     pass
         return message
@@ -249,6 +268,24 @@ def healthz():
     return {"ok": True}
 
 
+@app.get("/admin/summary.json")
+def admin_summary(request: Request):
+    token = os.environ.get("ADMIN_TOKEN")
+    if not token:
+        return JSONResponse({"error": "admin disabled (ADMIN_TOKEN unset)"},
+                            status_code=404)
+    # Same failed-attempt limiting as every other credential path — this is
+    # the endpoint that returns the personal-data rollup — plus a
+    # constant-time compare.
+    ip = _client_ip(request)
+    if not limiter.attempts_ok(ip):
+        return JSONResponse({"error": "too many attempts"}, status_code=429)
+    if not secrets.compare_digest(request.headers.get("x-admin-token", ""), token):
+        limiter.record_failed_attempt(ip)
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return JSONResponse({"codes": db.summary()})
+
+
 @app.get("/robots.txt", response_class=PlainTextResponse)
 def robots():
     # The gate is the code, not obscurity — but no reason to invite crawlers.
@@ -282,7 +319,8 @@ def fetch_landing(code: str, request: Request):
         f"Fetch: {base}/c/{code}/ask?q=<url-encoded question>\n\n"
         "Ask one concise question per request (keep the URL short). You may "
         "ask follow-ups; recent questions from this access code are "
-        "remembered briefly. Responses are plain markdown.\n\n"
+        "remembered briefly. Responses are plain markdown. Questions and "
+        "answers are recorded and reviewed by the candidate.\n\n"
         "## Profile card\n\n" + corpus.profile_summary() + "\n",
         headers=_FETCH_HEADERS, media_type="text/markdown")
 
@@ -300,8 +338,13 @@ def fetch_ask(code: str, request: Request, q: str = ""):
         return PlainTextResponse("Rate limit reached; try again later.",
                                  status_code=429, headers=_FETCH_HEADERS)
     corpus.check_reload()
+    day = time.strftime("%Y-%m-%d", time.gmtime())
+    skey = f"fetch:{c.code}:{day}"           # a fetch 'session' = code + UTC day
+    db.touch_session(skey, c.code, "fetch", ip=_client_ip(request),
+                     user_agent=request.headers.get("user-agent"))
     answer = engine.answer(c.code, q.strip(),
-                           continuity_key=f"fetch:{c.code}")
+                           continuity_key=f"fetch:{c.code}",
+                           session_ref=skey)
     return PlainTextResponse(answer, headers=_FETCH_HEADERS,
                              media_type="text/markdown")
 
@@ -333,6 +376,8 @@ async def start_session(request: Request):
         limiter.record_failed_attempt(ip)
         return _expired_page(table.status(raw))
     sid = secrets.token_urlsafe(32)         # fresh id at code entry (fixation)
+    db.touch_session(f"web:{sid}", raw, "web", ip=ip,
+                     user_agent=request.headers.get("user-agent"))
     with _sessions_lock:
         _sessions[sid] = {"code": raw, "history": [],
                           "created": time.time(), "last": time.time()}
@@ -380,10 +425,13 @@ async def chat(request: Request):
     sess["last"] = time.time()
     history = list(sess["history"])
 
+    sid = request.cookies.get("agent_session")
+
     def generate():
         chunks = []
         try:
-            for text in engine.stream_answer(c.code, history, question):
+            for text in engine.stream_answer(c.code, history, question,
+                                             session_ref=f"web:{sid}"):
                 chunks.append(text)
                 yield f"data: {json.dumps({'text': text})}\n\n"
         except Exception as e:                           # noqa: BLE001
