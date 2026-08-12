@@ -36,7 +36,13 @@ __all__ = ["ADAPTERS", "compute_dedupe_key", "PoliteFetcher", "HostBlocked"]
 
 
 class HostBlocked(RuntimeError):
-    """Raised when a host has refused us enough times to stop for the night."""
+    """Raised when a host has refused us enough times to stop for the night.
+
+    Note: `sources.HostBlocked` is a SEPARATE class with the same name for the
+    raw-feed fetch path. They are not interchangeable in `except` clauses; each
+    is caught within its own fetch layer (sources catch theirs inside
+    `collect()`), so neither escapes to a caller expecting the other.
+    """
 
 
 class PoliteFetcher:

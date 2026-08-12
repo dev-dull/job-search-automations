@@ -30,7 +30,7 @@ class WriteReportsTest(unittest.TestCase):
                              submitted=submitted, dry_run=False)
         md = next(outdir.glob("*.md")).read_text()
         self.assertIn("## Scored overnight", md)
-        self.assertIn("| 84.5 | Acme | DevOps Engineer |", md)
+        self.assertIn("| 84.5 | 88.0 | Acme | DevOps Engineer |", md)
         self.assertNotIn("| None |", md)     # the exact symptom of key drift
 
     def test_problems_section_and_rejection_log(self):

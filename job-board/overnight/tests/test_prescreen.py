@@ -47,6 +47,17 @@ class RulesStageTest(unittest.TestCase):
         self.assertIsNone(prescreen.build_title_drops(""))
 
 
+class MinDescriptionTest(unittest.TestCase):
+    def test_short_description_dropped_at_rules_for_any_source(self):
+        llm = _StubLLM()   # never consulted — must drop before any model call
+        p = prescreen.Prescreener(llm, gates_text="-", resume_text="r")
+        (d,) = p.screen_batch([_posting("DevOps Engineer", desc="too short")],
+                              triage_workers=1, gate_workers=1,
+                              progress=lambda m: None)
+        self.assertFalse(d.keep)
+        self.assertEqual(d.stage, "rules")
+
+
 class FunnelTest(unittest.TestCase):
     def _screen(self, llm, postings):
         p = prescreen.Prescreener(llm, gates_text="- no gates", resume_text="r",

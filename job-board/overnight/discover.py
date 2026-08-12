@@ -281,7 +281,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[*] DRY RUN — would submit {min(len(submittable), args.max_submit)} of {len(kept)}")
 
     # Companies worth a human look — never auto-added to the watch list.
-    new_co = Counter(d.company for d in kept if d.company)
+    # From submittable, not kept: a fail-open passthrough (stage=error) is not
+    # a role that survived the prescreen, and must not seed the shortlist.
+    new_co = Counter(d.company for d in submittable if d.company)
     if new_co:
         print("[*] companies producing keeps: " +
               ", ".join(f"{c}({n})" for c, n in new_co.most_common(12)))

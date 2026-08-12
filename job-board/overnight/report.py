@@ -44,9 +44,10 @@ def write_reports(outdir: Path, kept, dropped, fetch_errors, *, submitted,
 
     if submitted:
         lines += ["## Scored overnight", "",
-                  "| rank | company | title |", "|---|---|---|"]
-        for s in sorted(submitted, key=lambda x: x.get("rank") or 0, reverse=True):
-            lines.append(f"| {s.get('rank')} | {s['company']} | {s['title']} |")
+                  "| rank | fit | company | title |", "|---|---|---|---|"]
+        for row in sorted(submitted, key=lambda x: x.get("rank") or 0, reverse=True):
+            lines.append(f"| {row.get('rank')} | {row.get('score')} | "
+                         f"{row['company']} | {row['title']} |")
         lines.append("")
 
     if kept:

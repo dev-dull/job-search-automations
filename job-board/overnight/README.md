@@ -135,8 +135,8 @@ error recorded. A model problem must never silently shrink the funnel.
 - The seen-set is fetched before anything else and every known dedupe key skipped.
 - Sources use official APIs/feeds, send an honest User-Agent, and are
   rate-limited per host — and every source fetch shares a per-host circuit
-  breaker (`sources.polite_get`) that drops a host for the night after
-  repeated 403/429 rather than backing off into a block.
+  breaker (`sources.polite_get`) that drops a host for the night on a 403/429
+  (`SOURCE_BLOCK_AFTER`, default 1) rather than retrying into a block.
   `fetch.PoliteFetcher` applies the same policy to adapter-based fetching.
 - Companies are **never** auto-added to the watch list. The report lists the ones
   that produced keeps; adding them stays a human decision.

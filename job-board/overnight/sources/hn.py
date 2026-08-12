@@ -124,10 +124,19 @@ def collect(limit: int = 500, problems: list[str] | None = None) -> list[dict]:
     out: list[dict] = []
     page = 0
     while len(out) < limit:
-        data = _get(
-            f"{ALGOLIA}/search?tags=comment,story_{story_id}"
-            f"&hitsPerPage=100&page={page}"
-        )
+        try:
+            data = _get(
+                f"{ALGOLIA}/search?tags=comment,story_{story_id}"
+                f"&hitsPerPage=100&page={page}"
+            )
+        except Exception as err:                        # noqa: BLE001
+            # Keep what earlier pages already yielded — one 500 on page N (or a
+            # HostBlocked from the shared breaker) must not discard a whole
+            # night's HN harvest. Same policy as wwr's per-feed handling.
+            if problems is not None:
+                problems.append(f"hn: pagination stopped at page {page}: "
+                                f"{type(err).__name__}: {err}")
+            break
         hits = data.get("hits", [])
         if not hits:
             break

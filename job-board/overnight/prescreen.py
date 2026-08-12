@@ -34,7 +34,6 @@ substitute for the authoritative score.
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass, field
 
@@ -149,6 +148,12 @@ _GENERIC_TITLE_DROPS = re.compile(
     r"\b(intern|internship|apprentice|new[- ]grad)\b", re.I)
 _SENIOR_HINT = re.compile(r"\b(senior|sr\.?|lead)\b", re.I)
 
+# job-store scores nothing below this description length; a shorter posting
+# would burn two local model calls, eat a submit slot, and upsert unscored.
+# Enforced in stage 1 for EVERY source (HN filters at collection too; WWR and
+# any future source get the floor here).
+MIN_DESCRIPTION = 100
+
 
 def build_title_drops(extra: str | None) -> re.Pattern | None:
     """Compile TITLE_DROPS_EXTRA / --title-drops-extra: comma-separated
@@ -222,11 +227,13 @@ class Prescreener:
             title = (p.get("title") or "").strip()
             base = dict(url=p.get("url", ""), title=title, company=p.get("company", ""))
             ok, why = rules_stage(title, self.extra_drops)
+            jd = (p.get("description") or "").strip()
             if not ok:
                 decisions.append(Decision(**base, keep=False, stage="rules", reason=why))
-            elif not (p.get("description") or "").strip():
+            elif len(jd) < MIN_DESCRIPTION:
                 decisions.append(Decision(**base, keep=False, stage="rules",
-                                          reason="empty description"))
+                                          reason=f"description too short "
+                                                 f"({len(jd)} chars, min {MIN_DESCRIPTION})"))
             else:
                 stage2.append(p)
 
@@ -336,8 +343,10 @@ class Prescreener:
         if not ok:
             return Decision(**base, keep=False, stage="rules", reason=why)
 
-        if not jd:
-            return Decision(**base, keep=False, stage="rules", reason="empty description")
+        if len(jd) < MIN_DESCRIPTION:
+            return Decision(**base, keep=False, stage="rules",
+                            reason=f"description too short ({len(jd)} chars, "
+                                   f"min {MIN_DESCRIPTION})")
 
         # Stage 2 — title triage on the small GPU-resident model.
         try:

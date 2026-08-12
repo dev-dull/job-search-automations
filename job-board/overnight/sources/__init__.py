@@ -11,6 +11,11 @@ Every source must:
   * identify itself honestly in the User-Agent
   * be cheap enough to run nightly without being a burden on the host
 
+A source's `collect(limit, problems=None)` appends human-readable strings to
+`problems` (when given) for anything that degraded the run without aborting it
+— a dead feed, a truncated pagination — so the morning report shows the funnel
+narrowing instead of hiding it. `discover.py` always passes its errors list.
+
 Posting shape (matches what the job-store adapters emit, so the rest of the
 pipeline does not care where a posting came from):
 
@@ -41,7 +46,12 @@ USER_AGENT = os.environ.get(
 # path has its own politeness (fetch.PoliteFetcher); this covers the raw
 # API/feed fetches the current sources make.
 _MIN_DELAY_S = float(os.environ.get("SOURCE_MIN_DELAY_S", "2.0"))
-_BLOCK_AFTER = 3          # 403/429s from one host before giving up for the night
+# A single 403/429 blocks the host for the night. Today's sources make one (HN
+# search paginates same-host, WWR is one request per feed), so anything higher
+# would never trigger; the counter still generalizes to a future multi-request
+# source. Retrying into a refusal is the exact pattern the Workday scrapers got
+# caught by, so erring trigger-happy is deliberate.
+_BLOCK_AFTER = int(os.environ.get("SOURCE_BLOCK_AFTER", "1"))
 _last_hit: dict[str, float] = {}
 _refusals: dict[str, int] = {}
 _blocked: set[str] = set()
