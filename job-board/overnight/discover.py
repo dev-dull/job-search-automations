@@ -35,7 +35,11 @@ import urllib.request
 from collections import Counter
 from pathlib import Path
 
-from fetch import compute_dedupe_key
+# compute_dedupe_key lives in job-store's urls.py; import it directly rather
+# than via fetch, which would drag all six ATS adapter modules into the graph
+# just for this one function. fetch.py does the sys.path insert we rely on.
+import fetch  # noqa: F401  (performs the job-store sys.path insert)
+from urls import compute_dedupe_key
 from llm import LlamaSwap
 from prescreen import Decision, Prescreener
 from report import write_reports
@@ -99,6 +103,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="model alias for the cheap triage stage (env TRIAGE_MODEL)")
     ap.add_argument("--gate-model", default=os.environ.get("GATE_MODEL", "coder"),
                     help="model alias for the gates+fit stage (env GATE_MODEL)")
+    ap.add_argument("--model-dead-after", type=int,
+                    default=int(os.environ.get("MODEL_DEAD_AFTER", "2")),
+                    help="give up on a local model after this many timeouts in "
+                         "a run (env MODEL_DEAD_AFTER) — bounds wall-clock when "
+                         "the LLM host hangs")
     ap.add_argument("--title-drops-extra",
                     default=os.environ.get("TITLE_DROPS_EXTRA"),
                     help="comma-separated words/phrases to drop on sight in "
@@ -123,7 +132,15 @@ def main(argv: list[str] | None = None) -> int:
     if not args.backend:
         ap.error("--backend (or env JOB_STORE) is required — your job-store URL")
     print(f"[*] backend {args.backend}")
-    seen_resp = http_json(f"{args.backend}/jobs/urls")
+    try:
+        seen_resp = http_json(f"{args.backend}/jobs/urls")
+    except Exception as err:                            # noqa: BLE001
+        # Fail closed on the seen-set: without it every survivor re-scores.
+        # A one-line message beats a raw traceback (matches the /resume 404).
+        print(f"[!] cannot reach job-store at {args.backend} "
+              f"({type(err).__name__}: {err}). Is JOB_STORE correct and the "
+              f"backend up?", file=sys.stderr)
+        return 2
     seen = seen_keys(seen_resp)
     print(f"[*] seen-set: {len(seen)} dedupe keys")
     if not seen:
@@ -206,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # --- prescreen (free) -------------------------------------------------
-    llm = LlamaSwap(args.llm)
+    llm = LlamaSwap(args.llm, dead_after=args.model_dead_after)
     screener = Prescreener(llm, gates_text=gates_text, resume_text=resume_text,
                            triage_model=args.triage_model,
                            screen_model=args.gate_model,
@@ -223,6 +240,7 @@ def main(argv: list[str] | None = None) -> int:
             triage_workers=args.triage_workers,
             gate_workers=args.gate_workers,
             progress=lambda m: print(f"[*] {m}"),
+            problems=errors,
         )
     except BaseException as err:                     # includes KeyboardInterrupt
         errors.append(f"prescreen aborted: {type(err).__name__}: {err}")

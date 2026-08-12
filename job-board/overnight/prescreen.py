@@ -148,11 +148,9 @@ _GENERIC_TITLE_DROPS = re.compile(
     r"\b(intern|internship|apprentice|new[- ]grad)\b", re.I)
 _SENIOR_HINT = re.compile(r"\b(senior|sr\.?|lead)\b", re.I)
 
-# job-store scores nothing below this description length; a shorter posting
-# would burn two local model calls, eat a submit slot, and upsert unscored.
-# Enforced in stage 1 for EVERY source (HN filters at collection too; WWR and
-# any future source get the floor here).
-MIN_DESCRIPTION = 100
+# The backend's scoring floor, shared across sources and the prescreen so the
+# number lives in one place (sources.MIN_DESCRIPTION_CHARS).
+from sources import MIN_DESCRIPTION_CHARS as MIN_DESCRIPTION
 
 
 def build_title_drops(extra: str | None) -> re.Pattern | None:
@@ -211,16 +209,23 @@ class Prescreener:
         triage_workers: int = 8,
         gate_workers: int = 1,
         progress=None,
+        problems: list[str] | None = None,
     ) -> list[Decision]:
         """Screen many postings with exactly two model loads.
 
         triage_workers/gate_workers should match each model's `-np` slot count:
-        scorer serves 8, coder serves 1.
+        scorer serves 8, coder serves 1. `problems` (if given) collects
+        run-degradation notes for the morning report — currently triage
+        failures, which otherwise pass through to the full screen invisibly.
         """
         import concurrent.futures as cf
 
         decisions: list[Decision] = []
         stage2: list[dict] = []
+        # list.append is atomic under the GIL, so triage workers can record
+        # here without a lock. Gate failures are already visible (stage=error
+        # in the report); triage failures were the last silent degradation.
+        self._triage_errors: list[str] = []
 
         # Stage 1 — free.
         for p in postings:
@@ -252,6 +257,11 @@ class Prescreener:
                         decisions.append(d)
         if progress:
             progress(f"triage: {len(stage2) - len(stage3)} dropped, {len(stage3)} to full screen")
+        if self._triage_errors and problems is not None:
+            # One deduped line per failing model, not 400 — a dead triage
+            # model must be visible, not spammy.
+            for msg in sorted(set(self._triage_errors)):
+                problems.append(msg)
 
         # Stage 3 — coder resident for the whole stage.
         if stage3:
@@ -274,8 +284,14 @@ class Prescreener:
                 f"Title: {title}\nCompany: {p.get('company','')}", TRIAGE_SCHEMA,
                 max_tokens=400,
             )
-        except Exception:
-            return None, True  # fail open — a model problem must not shrink the funnel
+        except Exception as err:
+            # Fail open — a model problem must not shrink the funnel — but
+            # record it so a dead triage model shows up in the report instead
+            # of masquerading as "classified everything as keep".
+            getattr(self, "_triage_errors", []).append(
+                f"triage model {self.triage_model!r} failed: "
+                f"{type(err).__name__}: {err}")
+            return None, True
 
         # Decide on the CLASSIFICATION, not on the model's `keep` boolean.
         # Trusting `keep` made triage drop 0 of 33 on a live run — the model

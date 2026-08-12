@@ -62,6 +62,7 @@ morning report and tune the funnel before letting it spend.
 | `--triage-model` | `$TRIAGE_MODEL` / `scorer` | model alias for the triage stage |
 | `--gate-model` | `$GATE_MODEL` / `coder` | model alias for the gates+fit stage |
 | `--title-drops-extra` | `$TITLE_DROPS_EXTRA` | comma-separated title words to drop on sight. The built-in list drops only clearly-entry-level titles; **your** band/family exclusions (staff, manager, frontend, …) go here or in the gates file — they're personal config, not toolkit code |
+| `--model-dead-after` | `$MODEL_DEAD_AFTER` / 2 | give up on a local model after this many timeouts in a run (bounds wall-clock if the LLM host hangs) |
 | `--backend` | `$JOB_STORE` | job-store base URL (**required**) |
 | `--llm` | `$LLAMA_SWAP` | OpenAI-compatible LLM base URL |
 
@@ -130,6 +131,12 @@ error recorded. A model problem must never silently shrink the funnel.
   errored (`stage=error`) appears in the report for human review but is
   excluded from submission — a gate-model outage cannot convert the submit
   cap into unscreened paid calls.
+- **The wall clock is bounded, not just the spend**: `--max-submit` caps paid
+  calls, and `--model-dead-after` (default 2) makes the agent give up on a
+  local model that keeps timing out — a hung LLM host ends the night in
+  minutes with a report full of screen-failures, instead of grinding one
+  cold-start timeout per posting into the next day's run. Failed screens are
+  reported, never submitted.
 - `force` is never sent, so re-POSTing a known URL returns the cached analysis
   free of charge.
 - The seen-set is fetched before anything else and every known dedupe key skipped.

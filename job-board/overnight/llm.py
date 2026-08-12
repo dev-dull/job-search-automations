@@ -36,6 +36,17 @@ class LLMError(RuntimeError):
     pass
 
 
+def _is_timeout(err: Exception) -> bool:
+    """True for read- AND connect-phase timeouts. urllib re-wraps a
+    connect-phase socket timeout as URLError(reason=socket.timeout), which is
+    NOT a TimeoutError — missing that let a dropped-SYN path (firewall DROP,
+    dead tunnel) reproduce the 37-hour hang the model breaker exists to stop."""
+    if isinstance(err, TimeoutError):
+        return True
+    reason = getattr(err, "reason", None)
+    return isinstance(reason, TimeoutError)
+
+
 class LlamaSwap:
     def __init__(self, endpoint: str = DEFAULT_ENDPOINT, *, timeout: int | None = None,
                  dead_after: int = 2):
@@ -135,7 +146,7 @@ class LlamaSwap:
                 last_err = err
                 # A timeout (socket.timeout subclasses TimeoutError AND OSError)
                 # is the expensive failure — count it toward the model breaker.
-                if isinstance(err, TimeoutError):
+                if _is_timeout(err):
                     self._timeouts[model] = self._timeouts.get(model, 0) + 1
                     if self._timeouts[model] >= self.dead_after:
                         self._dead.add(model)

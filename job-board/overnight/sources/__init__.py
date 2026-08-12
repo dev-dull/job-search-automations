@@ -41,6 +41,12 @@ USER_AGENT = os.environ.get(
     "DISCOVERY_USER_AGENT",
     "overnight-discovery/0.1 (self-hosted job search agent)")
 
+# job-store scores nothing below this many chars of description (its app.py
+# threshold). One source of truth: sources gate on it at collection, the
+# prescreen enforces it in stage 1, so a sub-floor posting never reaches a
+# paid call from any path.
+MIN_DESCRIPTION_CHARS = 100
+
 # Minimum spacing between requests to the SAME host, applied by polite_get.
 # Sources are called serially, so a module-level table is safe. The adapters
 # path has its own politeness (fetch.PoliteFetcher); this covers the raw
@@ -125,4 +131,4 @@ from . import hn, wwr  # noqa: E402
 
 SOURCES = {"hn": hn, "wwr": wwr}
 
-__all__ = ["SOURCES", "USER_AGENT", "HostBlocked", "polite_get", "posting", "strip_html"]
+__all__ = ["SOURCES", "USER_AGENT", "HostBlocked", "polite_get", "posting", "strip_html", "MIN_DESCRIPTION_CHARS"]

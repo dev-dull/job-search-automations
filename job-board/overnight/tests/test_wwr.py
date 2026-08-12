@@ -28,7 +28,7 @@ class RegionFloorTest(unittest.TestCase):
         # 70-char JD + a long region would clear 100 chars combined, but the
         # JD alone is under the floor -> dropped.
         teaser = "We are hiring a devops engineer to help us out. Apply soon!"  # ~59
-        self.assertLess(len(teaser), wwr.MIN_JD_CHARS)
+        self.assertLess(len(teaser), wwr.MIN_DESCRIPTION_CHARS)
         out = self._collect([("Acme: DevOps Engineer",
                               "https://example.com/j",
                               "United States (long region string here)", teaser)])

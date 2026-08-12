@@ -16,15 +16,9 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 
-from . import polite_get, posting, strip_html
+from . import MIN_DESCRIPTION_CHARS, polite_get, posting, strip_html
 
 BASE = "https://weworkremotely.com/categories"
-
-# Mirror of the backend's scoring floor (prescreen.MIN_DESCRIPTION / job-store
-# app.py). Kept as a local constant rather than importing the prescreener into
-# a source module — if the backend floor changes, both move together by intent,
-# and the test in tests/test_wwr.py pins that a region-padded teaser is dropped.
-MIN_JD_CHARS = 100
 
 # Categories worth reading for infrastructure work. WWR has no
 # platform/infra category, so devops is the primary and programming is the
@@ -77,7 +71,7 @@ def collect(limit: int = 300, feeds: dict[str, str] | None = None,
             # backend's scoring floor (which means "enough JD to be worth
             # paying for"). Measuring here rather than trusting the prescreen's
             # stage-1 length check is what keeps the padding from rescuing it.
-            if len(jd) < MIN_JD_CHARS:
+            if len(jd) < MIN_DESCRIPTION_CHARS:
                 continue
             body = f"Region: {region}\n\n{jd}" if region else jd
 

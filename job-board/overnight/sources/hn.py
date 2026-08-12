@@ -22,7 +22,7 @@ import json
 import re
 import urllib.parse
 
-from . import polite_get, posting, strip_html
+from . import MIN_DESCRIPTION_CHARS, polite_get, posting, strip_html
 
 ALGOLIA = "https://hn.algolia.com/api/v1"
 _THREAD_RE = re.compile(r"^Ask HN: Who is hiring\?", re.I)
@@ -94,14 +94,8 @@ _NOT_A_TITLE = re.compile(
     r"[a-z ]+,\s*[a-z]{2})$", re.I)
 
 
-# job-store scores nothing under 100 chars of description (app.py's
-# threshold) — anything shorter would eat a --max-submit slot and upsert
-# unscored, so the floor here matches the backend's.
-_MIN_TEXT = 100
-
-
 def _looks_like_posting(company: str, title: str, text: str) -> bool:
-    if len(text) < _MIN_TEXT:               # too short to be a real posting
+    if len(text) < MIN_DESCRIPTION_CHARS:               # too short to be a real posting
         return False
     if not _HIRING_HINT.search(text):       # reads like discussion, not a job
         return False
