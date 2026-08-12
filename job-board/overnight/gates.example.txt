@@ -1,0 +1,39 @@
+# Example gates file for --gates / $GATES_PATH.
+#
+# COPY THIS SOMEWHERE PRIVATE AND EDIT IT. Do not commit the real one — it is
+# personal data, and this repo is public. job-store keeps the authoritative
+# preferences server-side (PREFERENCES_PATH); this is the local prescreen's copy
+# so it can drop obvious misses without a paid call.
+#
+# The file is read as plain text and pasted into the system prompt, so the format
+# is whatever a model reads well. Prose beats YAML here. What matters is that
+# each line states something the model can check against quoted posting text.
+#
+# Write deal-breakers, not preferences. Every line here can DROP a job, and a
+# gate that fires wrongly costs a real opportunity — the morning report has a
+# "dropped on gates" section precisely so you can audit for that.
+#
+# Everything below describes an INVENTED example candidate. Replace all of it
+# with your own deal-breakers.
+
+- Level: mid-to-senior individual contributor. Nothing requiring prior
+  team-lead or people-management experience.
+
+- Location: remote within European time zones, or hybrid within commuting
+  distance of Rotterdam. Relocation requirements are a hard fail.
+
+- Excluded role families:
+  - Consulting or agency work billed by the hour
+  - Primarily embedded/firmware work
+  - Roles where most of the work is stakeholder reporting
+
+- Required background: the example candidate is a backend engineer (Go,
+  PostgreSQL, event-driven systems). A posting that lists deep expertise in an
+  unrelated stack as REQUIRED — not "nice to have" — is a fail.
+
+- Compensation: if a range is published and its top is below the candidate's
+  floor, fail. If no range is published, this gate does not fire.
+
+# Reminder for whoever edits this: ambiguity is NOT a failure. If the posting
+# does not say, the gate does not fire. The prompt says so too, but the wording
+# of these lines is what the model actually reasons over — keep them checkable.
