@@ -6,9 +6,10 @@ at a mounted volume). WAL + generous busy timeout, single-process serving
 the hard way there.
 
 Code-table semantics (the phase-1 file stays first-class):
-- Rows synced from ACCESS_CODES_PATH carry source='file' and are replaced to
-  match the file on every reload — so the phase-1 revocation story (delete the
-  line, let content sync deliver it) still works unchanged.
+- Rows synced from ACCESS_CODES_PATH carry source='file'. On reload, rows
+  absent from the file are TOMBSTONED (revoked), never deleted — the phase-1
+  revocation story (delete the line) still works, while the code's sessions
+  and cost stay visible in every rollup. Re-adding a line un-revokes.
 - Rows minted by mint_code.py carry source='cli' and are never touched by file
   sync. Revoke those with mint_code.py --revoke.
 
@@ -96,7 +97,8 @@ class Store:
         import time as _time
         hour_w, day_w = int(_time.time() // 3600), int(_time.time() // 86400)
         conn.execute("DELETE FROM counters WHERE (key LIKE 'req:%' OR "
-                     "key LIKE 'fail:%') AND window < ?", (hour_w,))
+                     "key LIKE 'fail:%' OR key LIKE 'adminfail:%') "
+                     "AND window < ?", (hour_w,))
         conn.execute("DELETE FROM counters WHERE key LIKE 'spend:%' "
                      "AND window < ?", (day_w,))
         conn.commit()

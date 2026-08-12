@@ -36,6 +36,10 @@ ingress:
   annotations: {}
 
 # Phase-2 session/transcript DB (AGENT_DB_PATH=/data/agent.db in the image).
+# enabled=false is EPHEMERAL mode: the DB moves to the pod's tmp emptyDir, so
+# transcripts, session history, rate limits and daily budget counters all
+# reset on every restart — the durable-limits guarantee only holds with
+# persistence on (or an explicit env.AGENT_DB_PATH onto your own volume).
 persistence:
   enabled: true
   size: 1Gi

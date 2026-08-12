@@ -239,6 +239,44 @@ class SurfaceTest(unittest.TestCase):
         r = self.client.get("/admin/summary.json",
                             headers={"X-Admin-Token": "test-admin-token"})
         self.assertEqual(r.status_code, 429)     # even the right token: locked
+        # Decoupled counters: admin guessing must NOT lock out employers on
+        # the other surfaces (re-review finding on PR #74).
+        self.assertEqual(self._enter().status_code, 200)
+
+    def test_admin_non_ascii_header_is_401_not_500(self):
+        # compare_digest on str raises TypeError on non-ASCII (Starlette
+        # decodes headers as latin-1, so obs-text reaches the handler);
+        # comparing bytes must yield a clean 401. httpx refuses non-ASCII
+        # str headers, so send raw bytes.
+        r = self.client.get("/admin/summary.json",
+                            headers={b"X-Admin-Token": "wröng".encode("latin-1")})
+        self.assertEqual(r.status_code, 401)
+
+    def test_code_lockout_does_not_block_admin(self):
+        # The reverse of the decoupling test, and the operationally important
+        # direction: a tripped fail:GLOBAL (code-guessing storm) must not 429
+        # the admin rollup — that's the surface you reach for DURING a storm.
+        import codes as codes_mod
+        app_mod.db.bump("fail:GLOBAL", codes_mod.FAILED_ATTEMPTS_GLOBAL_HOUR, 3600)
+        # Precondition: the lockout is genuinely in effect (guards against the
+        # key/ceiling drifting and this test passing vacuously).
+        self.assertEqual(self._enter().status_code, 403)
+        r = self.client.get("/admin/summary.json",
+                            headers={"X-Admin-Token": "test-admin-token"})
+        self.assertEqual(r.status_code, 200)
+
+    def test_admin_non_ascii_token_authenticates(self):
+        # A non-ASCII ADMIN_TOKEN must WORK, not 401 forever (PR #75 review):
+        # utf-8 wire bytes -> latin-1 decode -> latin-1 re-encode round-trips.
+        saved = os.environ["ADMIN_TOKEN"]
+        os.environ["ADMIN_TOKEN"] = "töken"
+        try:
+            r = self.client.get(
+                "/admin/summary.json",
+                headers={b"X-Admin-Token": "töken".encode("utf-8")})
+            self.assertEqual(r.status_code, 200)
+        finally:
+            os.environ["ADMIN_TOKEN"] = saved
 
     def test_recorded_exchange_carries_real_cost(self):
         # Locks the token -> usage_cost_usd -> DB chain end to end.

@@ -268,20 +268,33 @@ def healthz():
     return {"ok": True}
 
 
+def _admin_attempts_ok(ip: str) -> bool:
+    # Deliberately NOT the shared fail: counters: admin-token guessing is
+    # unauthenticated traffic and must not be able to trip the global breaker
+    # that locks out legitimate employers on every other surface.
+    import codes as _c
+    return (db.bump(f"adminfail:{ip}", 0, 3600) < _c.FAILED_ATTEMPTS_PER_IP_HOUR
+            and db.bump("adminfail:GLOBAL", 0, 3600) < _c.FAILED_ATTEMPTS_GLOBAL_HOUR)
+
+
 @app.get("/admin/summary.json")
 def admin_summary(request: Request):
     token = os.environ.get("ADMIN_TOKEN")
     if not token:
         return JSONResponse({"error": "admin disabled (ADMIN_TOKEN unset)"},
                             status_code=404)
-    # Same failed-attempt limiting as every other credential path — this is
-    # the endpoint that returns the personal-data rollup — plus a
-    # constant-time compare.
     ip = _client_ip(request)
-    if not limiter.attempts_ok(ip):
+    if not _admin_attempts_ok(ip):
         return JSONResponse({"error": "too many attempts"}, status_code=429)
-    if not secrets.compare_digest(request.headers.get("x-admin-token", ""), token):
-        limiter.record_failed_attempt(ip)
+    # Compare BYTES, restoring each side's actual bytes: Starlette decodes
+    # headers as latin-1 (so latin-1 re-encode round-trips the wire bytes),
+    # and env values may carry surrogate-escaped invalid UTF-8 (os.fsencode
+    # round-trips those). A str compare_digest would TypeError on non-ASCII;
+    # a utf-8 re-encode would mismatch every non-ASCII token.
+    supplied = request.headers.get("x-admin-token", "").encode("latin-1")
+    if not secrets.compare_digest(supplied, os.fsencode(token)):
+        db.bump(f"adminfail:{ip}", 1, 3600)
+        db.bump("adminfail:GLOBAL", 1, 3600)
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     return JSONResponse({"codes": db.summary()})
 
