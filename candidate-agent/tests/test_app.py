@@ -252,6 +252,16 @@ class SurfaceTest(unittest.TestCase):
                             headers={b"X-Admin-Token": "wröng".encode("latin-1")})
         self.assertEqual(r.status_code, 401)
 
+    def test_code_lockout_does_not_block_admin(self):
+        # The reverse of the decoupling test, and the operationally important
+        # direction: a tripped fail:GLOBAL (code-guessing storm) must not 429
+        # the admin rollup — that's the surface you reach for DURING a storm.
+        import codes as codes_mod
+        app_mod.db.bump("fail:GLOBAL", codes_mod.FAILED_ATTEMPTS_GLOBAL_HOUR, 3600)
+        r = self.client.get("/admin/summary.json",
+                            headers={"X-Admin-Token": "test-admin-token"})
+        self.assertEqual(r.status_code, 200)
+
     def test_admin_non_ascii_token_authenticates(self):
         # A non-ASCII ADMIN_TOKEN must WORK, not 401 forever (PR #75 review):
         # utf-8 wire bytes -> latin-1 decode -> latin-1 re-encode round-trips.
