@@ -58,6 +58,16 @@ def http_json(url: str, payload: dict | None = None, timeout: int = 60):
         return json.loads(body) if body.strip() else {}
 
 
+def seen_keys(payload: dict) -> set[str]:
+    """The seen-set from GET /jobs/urls. Prefers dedupe_keys; falls back to
+    computing keys from urls for older backends (same behavior as the
+    poller's _seen_keys — this is the spend guardrail, so no silent empty)."""
+    keys = set(payload.get("dedupe_keys") or [])
+    if not keys:
+        keys = {compute_dedupe_key(u) for u in payload.get("urls") or []}
+    return keys
+
+
 def load_gates(path: str | None) -> str:
     if not path:
         raise SystemExit(
@@ -88,6 +98,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="model alias for the cheap triage stage (env TRIAGE_MODEL)")
     ap.add_argument("--gate-model", default=os.environ.get("GATE_MODEL", "coder"),
                     help="model alias for the gates+fit stage (env GATE_MODEL)")
+    ap.add_argument("--title-drops-extra",
+                    default=os.environ.get("TITLE_DROPS_EXTRA"),
+                    help="comma-separated words/phrases to drop on sight in "
+                         "titles (env TITLE_DROPS_EXTRA) — your personal band/"
+                         "family exclusions live here or in the gates file, "
+                         "not in the code")
     ap.add_argument("--sources", default="hn,wwr",
                     help=f"comma-separated: {','.join(SOURCES)}")
     ap.add_argument("--submit", action="store_true",
@@ -106,10 +122,32 @@ def main(argv: list[str] | None = None) -> int:
     if not args.backend:
         ap.error("--backend (or env JOB_STORE) is required — your job-store URL")
     print(f"[*] backend {args.backend}")
-    seen = set(http_json(f"{args.backend}/jobs/urls").get("dedupe_keys", []))
+    seen_resp = http_json(f"{args.backend}/jobs/urls")
+    seen = seen_keys(seen_resp)
     print(f"[*] seen-set: {len(seen)} dedupe keys")
+    if not seen:
+        # Legitimate only on a brand-new board. On an established one this
+        # means dedupe is broken and every survivor would be re-submitted —
+        # the single most expensive failure this agent can have. Say so in
+        # the report, loudly.
+        errors_boot = ["seen-set is EMPTY — fine on a fresh board, otherwise "
+                       "dedupe is broken and paid re-scoring is likely"]
+        print(f"[!] {errors_boot[0]}")
+    else:
+        errors_boot = []
 
-    resume = http_json(f"{args.backend}/resume")
+    try:
+        resume = http_json(f"{args.backend}/resume")
+    except urllib.error.HTTPError as err:
+        if err.code == 404:
+            # 404 is the backend's documented answer when RESUME_PATH is
+            # unset server-side. Without a resume there is nothing to sketch
+            # fit against — fail with instructions, not a traceback.
+            print("[!] job-store has no resume configured (GET /resume -> 404). "
+                  "Set RESUME_PATH on the backend; the prescreen needs the "
+                  "resume text for fit sketches.", file=sys.stderr)
+            return 2
+        raise
     resume_text = resume if isinstance(resume, str) else json.dumps(resume)
 
     # Companies already watched: their roles are the poller's job, not ours.
@@ -121,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- collect ---------------------------------------------------------
     raw: list[dict] = []
-    errors: list[str] = []
+    errors: list[str] = list(errors_boot)
     for name in [s.strip() for s in args.sources.split(",") if s.strip()]:
         mod = SOURCES.get(name)
         if mod is None:
@@ -162,7 +200,8 @@ def main(argv: list[str] | None = None) -> int:
     llm = LlamaSwap(args.llm)
     screener = Prescreener(llm, gates_text=gates_text, resume_text=resume_text,
                            triage_model=args.triage_model,
-                           screen_model=args.gate_model)
+                           screen_model=args.gate_model,
+                           title_drops_extra=args.title_drops_extra)
 
     # Batched by stage: llama-swap holds ONE model, so screening postings
     # individually swaps models twice per posting. See prescreen.screen_batch.
@@ -189,11 +228,22 @@ def main(argv: list[str] | None = None) -> int:
     kept.sort(key=lambda d: d.detail.get("fit_sketch") or 0, reverse=True)
     print(f"[*] kept {len(kept)}, dropped {len(dropped)}")
 
+    # Fail-open keeps a posting IN THE REPORT, never in the paid queue: a
+    # gate-model outage must not convert --max-submit slots into unscreened
+    # Anthropic calls. They're listed for the human instead.
+    submittable = [d for d in kept if d.stage != "error"]
+    error_kept = len(kept) - len(submittable)
+    if error_kept:
+        msg = (f"{error_kept} posting(s) kept via screen-failure passthrough — "
+               f"in the report for human review, EXCLUDED from paid submission")
+        errors.append(msg)
+        print(f"[!] {msg}")
+
     # --- submit (paid, capped) -------------------------------------------
     by_url = {p["url"]: p for p in fresh}
     submitted = []
     if args.submit:
-        for d in kept[: args.max_submit]:
+        for d in submittable[: args.max_submit]:
             src = by_url.get(d.url, {})
             payload = {
                 "url": d.url,
@@ -213,15 +263,14 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"[!] submit failed {d.url}: HTTP {err.code}")
             except Exception as err:
                 print(f"[!] submit failed {d.url}: {err}")
-        if len(kept) > args.max_submit:
-            print(f"[*] cap reached: {len(kept) - args.max_submit} survivors not submitted")
+        if len(submittable) > args.max_submit:
+            print(f"[*] cap reached: {len(submittable) - args.max_submit} survivors not submitted")
     else:
-        print(f"[*] DRY RUN — would submit {min(len(kept), args.max_submit)} of {len(kept)}")
+        print(f"[*] DRY RUN — would submit {min(len(submittable), args.max_submit)} of {len(kept)}")
 
     # Companies worth a human look — never auto-added to the watch list.
     new_co = Counter(d.company for d in kept if d.company)
     if new_co:
-        errors.append("")  # spacer in the report
         print("[*] companies producing keeps: " +
               ", ".join(f"{c}({n})" for c, n in new_co.most_common(12)))
 

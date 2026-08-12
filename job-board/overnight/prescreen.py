@@ -34,6 +34,7 @@ substitute for the authoritative score.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 
@@ -134,25 +135,36 @@ class Decision:
 
 
 # Stage 1 — deterministic. Cheapest possible rejection.
-_HARD_TITLE_DROPS = re.compile(
-    r"\b(intern|internship|junior|jr\.?|associate|apprentice|"
-    r"manager|director|head of|vp\b|vice president|chief|"
-    r"principal|staff|distinguished|fellow|"
-    r"recruiter|sales|marketing|designer|"
-    r"front[- ]?end|mobile|ios|android|"
-    r"data scientist|machine learning engineer)\b",
-    re.I,
-)
+# Only universally-safe drops by default: clearly-entry-level markers no
+# operator of THIS funnel is hunting for. Everything that encodes one
+# person's target band or excluded families (staff/principal, manager,
+# frontend, ML, ...) belongs in the operator's private config: cheap ones in
+# TITLE_DROPS_EXTRA / --title-drops-extra, judgment calls in the gates file.
+# An earlier version hardcoded one operator's whole exclusion list here —
+# the privacy failure mode, one layer up.
+_GENERIC_TITLE_DROPS = re.compile(
+    r"\b(intern|internship|apprentice|new[- ]grad)\b", re.I)
 _SENIOR_HINT = re.compile(r"\b(senior|sr\.?|lead)\b", re.I)
 
 
-def rules_stage(title: str) -> tuple[bool, str]:
+def build_title_drops(extra: str | None) -> re.Pattern | None:
+    """Compile TITLE_DROPS_EXTRA / --title-drops-extra: comma-separated
+    words/phrases, matched case-insensitively on word boundaries."""
+    terms = [t.strip() for t in (extra or "").split(",") if t.strip()]
+    if not terms:
+        return None
+    return re.compile(
+        r"\b(" + "|".join(re.escape(t) for t in terms) + r")\b", re.I)
+
+
+def rules_stage(title: str, extra_drops: re.Pattern | None = None) -> tuple[bool, str]:
     t = (title or "").strip()
     if not t:
         return False, "no title"
-    m = _HARD_TITLE_DROPS.search(t)
-    if m:
-        return False, f"title contains {m.group(0)!r}"
+    for pat in (_GENERIC_TITLE_DROPS, extra_drops):
+        m = pat.search(t) if pat else None
+        if m:
+            return False, f"title contains {m.group(0)!r}"
     return True, ""
 
 
@@ -165,12 +177,16 @@ class Prescreener:
         resume_text: str,
         triage_model: str = "scorer",
         screen_model: str = "coder",
+        title_drops_extra: str | None = None,
         fit_floor: int = 25,
         max_jd_chars: int = 24000,
     ):
         self.llm = llm
         self.triage_model = triage_model
         self.screen_model = screen_model
+        self.extra_drops = build_title_drops(
+            title_drops_extra if title_drops_extra is not None
+            else os.environ.get("TITLE_DROPS_EXTRA"))
         self.fit_floor = fit_floor
         self.max_jd_chars = max_jd_chars
         self.gate_system = GATE_SYSTEM_TMPL.format(
@@ -201,7 +217,7 @@ class Prescreener:
         for p in postings:
             title = (p.get("title") or "").strip()
             base = dict(url=p.get("url", ""), title=title, company=p.get("company", ""))
-            ok, why = rules_stage(title)
+            ok, why = rules_stage(title, self.extra_drops)
             if not ok:
                 decisions.append(Decision(**base, keep=False, stage="rules", reason=why))
             elif not (p.get("description") or "").strip():
@@ -290,7 +306,7 @@ class Prescreener:
             # ThreadPoolExecutor.map and takes the whole night's work with it —
             # which is how one ConnectionResetError lost a 20-minute run.
             # A failed screen is a kept posting, never a crash.
-            return Decision(**base, keep=True, stage="gates",
+            return Decision(**base, keep=True, stage="error",
                             reason=f"screen failed, passing through: "
                                    f"{type(err).__name__}: {err}")
 
@@ -312,7 +328,7 @@ class Prescreener:
 
         base = dict(url=url, title=title, company=company)
 
-        ok, why = rules_stage(title)
+        ok, why = rules_stage(title, self.extra_drops)
         if not ok:
             return Decision(**base, keep=False, stage="rules", reason=why)
 
@@ -328,7 +344,7 @@ class Prescreener:
             )
         except LLMError as err:
             # Fail open: a model problem must not silently shrink the funnel.
-            return Decision(**base, keep=True, stage="triage",
+            return Decision(**base, keep=True, stage="error",
                             reason=f"triage failed, passing through: {err}")
 
         if not t.get("keep"):
@@ -353,7 +369,7 @@ class Prescreener:
             # ThreadPoolExecutor.map and takes the whole night's work with it —
             # which is how one ConnectionResetError lost a 20-minute run.
             # A failed screen is a kept posting, never a crash.
-            return Decision(**base, keep=True, stage="gates",
+            return Decision(**base, keep=True, stage="error",
                             reason=f"screen failed, passing through: "
                                    f"{type(err).__name__}: {err}")
 

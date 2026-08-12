@@ -21,9 +21,8 @@ from __future__ import annotations
 import json
 import re
 import urllib.parse
-import urllib.request
 
-from . import USER_AGENT, posting, strip_html
+from . import polite_get, posting, strip_html
 
 ALGOLIA = "https://hn.algolia.com/api/v1"
 _THREAD_RE = re.compile(r"^Ask HN: Who is hiring\?", re.I)
@@ -43,9 +42,7 @@ _ATS_HINTS = (
 
 
 def _get(url: str, timeout: int = 30):
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.load(resp)
+    return json.loads(polite_get(url, timeout=timeout))
 
 
 def latest_thread() -> dict | None:

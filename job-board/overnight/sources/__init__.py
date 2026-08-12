@@ -36,6 +36,33 @@ USER_AGENT = os.environ.get(
     "DISCOVERY_USER_AGENT",
     "overnight-discovery/0.1 (self-hosted job search agent)")
 
+# Minimum spacing between requests to the SAME host, applied by polite_get.
+# Sources are called serially, so a module-level table is safe. The adapters
+# path has its own politeness (fetch.PoliteFetcher); this covers the raw
+# API/feed fetches the current sources make.
+_MIN_DELAY_S = float(os.environ.get("SOURCE_MIN_DELAY_S", "2.0"))
+_last_hit: dict[str, float] = {}
+
+
+def polite_get(url: str, timeout: int = 30) -> bytes:
+    """GET with an honest UA and a per-host minimum delay. All source fetches
+    go through here so the README's rate-limiting guarantee is made by code,
+    not by prose."""
+    import time
+    import urllib.parse
+    import urllib.request
+    host = urllib.parse.urlparse(url).netloc.lower()
+    last = _last_hit.get(host)
+    if last is not None:
+        wait = _MIN_DELAY_S - (time.monotonic() - last)
+        if wait > 0:
+            time.sleep(wait)
+    _last_hit[host] = time.monotonic()
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read()
+
+
 _TAG = re.compile(r"<[^>]+>")
 _WS = re.compile(r"[ \t\r\f\v]+")
 _BLANKS = re.compile(r"\n{3,}")
@@ -68,4 +95,4 @@ from . import hn, wwr  # noqa: E402
 
 SOURCES = {"hn": hn, "wwr": wwr}
 
-__all__ = ["SOURCES", "USER_AGENT", "posting", "strip_html"]
+__all__ = ["SOURCES", "USER_AGENT", "polite_get", "posting", "strip_html"]

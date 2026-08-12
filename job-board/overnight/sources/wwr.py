@@ -14,10 +14,9 @@ and support roles. That is expected and is what the rules stage is for.
 
 from __future__ import annotations
 
-import urllib.request
 import xml.etree.ElementTree as ET
 
-from . import USER_AGENT, posting, strip_html
+from . import polite_get, posting, strip_html
 
 BASE = "https://weworkremotely.com/categories"
 
@@ -31,9 +30,7 @@ FEEDS = {
 
 
 def _fetch(url: str, timeout: int = 45) -> bytes:
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read()
+    return polite_get(url, timeout=timeout)
 
 
 def _text(item: ET.Element, tag: str) -> str:

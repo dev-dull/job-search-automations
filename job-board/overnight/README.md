@@ -61,6 +61,7 @@ morning report and tune the funnel before letting it spend.
 | `--gate-workers` | 1 | match your gate model's parallel slots — more just queues |
 | `--triage-model` | `$TRIAGE_MODEL` / `scorer` | model alias for the triage stage |
 | `--gate-model` | `$GATE_MODEL` / `coder` | model alias for the gates+fit stage |
+| `--title-drops-extra` | `$TITLE_DROPS_EXTRA` | comma-separated title words to drop on sight. The built-in list drops only clearly-entry-level titles; **your** band/family exclusions (staff, manager, frontend, …) go here or in the gates file — they're personal config, not toolkit code |
 | `--backend` | `$JOB_STORE` | job-store base URL (**required**) |
 | `--llm` | `$LLAMA_SWAP` | OpenAI-compatible LLM base URL |
 
@@ -87,6 +88,14 @@ The site has said no.
 Only **top-level** HN comments are treated as postings; replies are discussion.
 Without that filter roughly half of what you collect is people arguing about
 compensation.
+
+**HN postings are lower-fidelity than board postings, by nature.** The
+"description" is the comment text (sometimes a blurb, not a JD) and the URL is
+a best-effort pick from the comment's links — occasionally a company homepage
+rather than the posting. That's an accepted trade for HN's unique signal, but
+it means an HN submission can put a homepage-URL row with a blurb-quality
+description on the board; the morning report is where you catch those.
+Comments under the backend's minimum description length upsert unscored.
 
 ## Things that will bite you
 
@@ -116,6 +125,10 @@ error recorded. A model problem must never silently shrink the funnel.
 ## Guardrails
 
 - Nothing is POSTed without `--submit`; `--max-submit` caps the spend.
+- **Fail-open never reaches the paid stage**: a posting kept because a model
+  errored (`stage=error`) appears in the report for human review but is
+  excluded from submission — a gate-model outage cannot convert the submit
+  cap into unscreened paid calls.
 - `force` is never sent, so re-POSTing a known URL returns the cached analysis
   free of charge.
 - The seen-set is fetched before anything else and every known dedupe key skipped.
