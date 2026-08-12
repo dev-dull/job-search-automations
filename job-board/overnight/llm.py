@@ -110,7 +110,9 @@ class LlamaSwap:
         timeout = WARM_TIMEOUT if model in self._warm else self.timeout
         last_err: Exception | None = None
 
+        attempts = 0
         for attempt in range(retries + 1):
+            attempts = attempt + 1
             try:
                 req = urllib.request.Request(
                     f"{self.endpoint}/v1/chat/completions",
@@ -154,7 +156,7 @@ class LlamaSwap:
                 if attempt < retries:
                     time.sleep(2 * (attempt + 1))
 
-        raise LLMError(f"{model}: failed after {retries + 1} attempts: {last_err}")
+        raise LLMError(f"{model}: failed after {attempts} attempt(s): {last_err}")
 
 
 # --- Schemas ---------------------------------------------------------------

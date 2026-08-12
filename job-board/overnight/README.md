@@ -146,7 +146,6 @@ error recorded. A model problem must never silently shrink the funnel.
   rate-limited per host — and every source fetch shares a per-host circuit
   breaker (`sources.polite_get`) that drops a host for the night on a 403/429
   (`SOURCE_BLOCK_AFTER`, default 1) rather than retrying into a block.
-  `fetch.PoliteFetcher` applies the same policy to adapter-based fetching.
 - Companies are **never** auto-added to the watch list. The report lists the ones
   that produced keeps; adding them stays a human decision.
 - Keep reports on durable storage — if your LLM host's disks are scratch
@@ -162,7 +161,7 @@ error recorded. A model problem must never silently shrink the funnel.
 | `sources/` | `hn.py`, `wwr.py` — pluggable collectors returning a common shape |
 | `prescreen.py` | rules → triage → gates+fit funnel |
 | `llm.py` | llama-swap client, grammar-constrained JSON, schemas |
-| `fetch.py` | rate limiting + circuit breaker; reuses `job-store/adapters` |
+| `fetch.py` | **scaffolding, not yet wired** — a `PoliteFetcher` over the reused `job-store/adapters` for a future adapter-based source. Today's sources (hn, wwr) use raw APIs/RSS via `sources.polite_get`, so nothing imports this yet |
 | `report.py` | CSV + morning markdown, including the rejection log |
 
 ## Scheduling

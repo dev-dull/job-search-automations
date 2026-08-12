@@ -1,5 +1,13 @@
 """Rate-limited wrapper around the existing ATS adapters.
 
+NOT CURRENTLY WIRED. The shipped sources (hn, wwr) fetch raw APIs/RSS through
+`sources.polite_get`, which has its own per-host delay + breaker, so nothing
+imports this module yet. It's kept as the seam for a future adapter-based
+source (the design premise that the overnight agent reuses job-store's
+adapters rather than writing new scrapers). If it's still unused when a
+second source lands, delete it.
+
+
 The adapters in `job-store/adapters/` are pure fetch functions and are reused
 verbatim — this module does not reimplement any scraping. What it adds is the
 politeness the overnight brief requires and the poller does not currently

@@ -190,6 +190,9 @@ class Prescreener:
         self.llm = llm
         self.triage_model = triage_model
         self.screen_model = screen_model
+        # Set here (not just in screen_batch) so _triage never discards a
+        # failure into a throwaway list on the single-posting screen() path.
+        self._triage_errors: list[str] = []
         # The CLI (discover.py) resolves $TITLE_DROPS_EXTRA into the flag;
         # reading env here too would make direct construction (tests, library
         # use) inherit ambient state from the operator's shell.
@@ -225,7 +228,7 @@ class Prescreener:
         # list.append is atomic under the GIL, so triage workers can record
         # here without a lock. Gate failures are already visible (stage=error
         # in the report); triage failures were the last silent degradation.
-        self._triage_errors: list[str] = []
+        self._triage_errors = []           # reset per batch
         self._stage2_count = 0
 
         # Stage 1 — free.
@@ -293,7 +296,7 @@ class Prescreener:
             # Fail open — a model problem must not shrink the funnel — but
             # record it so a dead triage model shows up in the report instead
             # of masquerading as "classified everything as keep".
-            getattr(self, "_triage_errors", []).append(
+            self._triage_errors.append(
                 f"triage model {self.triage_model!r} failed: "
                 f"{type(err).__name__}: {err}")
             return None, True
