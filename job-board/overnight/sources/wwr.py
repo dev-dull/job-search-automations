@@ -20,6 +20,12 @@ from . import polite_get, posting, strip_html
 
 BASE = "https://weworkremotely.com/categories"
 
+# Mirror of the backend's scoring floor (prescreen.MIN_DESCRIPTION / job-store
+# app.py). Kept as a local constant rather than importing the prescreener into
+# a source module — if the backend floor changes, both move together by intent,
+# and the test in tests/test_wwr.py pins that a region-padded teaser is dropped.
+MIN_JD_CHARS = 100
+
 # Categories worth reading for infrastructure work. WWR has no
 # platform/infra category, so devops is the primary and programming is the
 # wider net that occasionally carries platform roles.
@@ -65,9 +71,15 @@ def collect(limit: int = 300, feeds: dict[str, str] | None = None,
                 company, title = "", raw_title
 
             region = _text(item, "region")
-            body = strip_html(_text(item, "description"))
-            if region:
-                body = f"Region: {region}\n\n{body}"
+            jd = strip_html(_text(item, "description"))
+            # Drop teasers on the JD ALONE, before the synthesized Region line
+            # is added: 36 chars of metadata must not lift a thin JD over the
+            # backend's scoring floor (which means "enough JD to be worth
+            # paying for"). Measuring here rather than trusting the prescreen's
+            # stage-1 length check is what keeps the padding from rescuing it.
+            if len(jd) < MIN_JD_CHARS:
+                continue
+            body = f"Region: {region}\n\n{jd}" if region else jd
 
             out.append(posting(
                 url=link,

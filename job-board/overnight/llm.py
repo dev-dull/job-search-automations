@@ -37,10 +37,21 @@ class LLMError(RuntimeError):
 
 
 class LlamaSwap:
-    def __init__(self, endpoint: str = DEFAULT_ENDPOINT, *, timeout: int | None = None):
+    def __init__(self, endpoint: str = DEFAULT_ENDPOINT, *, timeout: int | None = None,
+                 dead_after: int = 2):
         self.endpoint = endpoint.rstrip("/")
         self.timeout = timeout or COLD_START_TIMEOUT
         self._warm: set[str] = set()
+        # Per-model circuit breaker on TIMEOUTS. --max-submit bounds the money,
+        # but nothing bounded the wall clock: a hung llama-swap costs one full
+        # COLD_START_TIMEOUT per posting (~45 min), so 400 postings could run
+        # 37+ hours into the next night's cron. After `dead_after` timeouts a
+        # model is declared dead and every later call fails fast — the run ends
+        # in minutes with a report full of screen-failures (fail-open =>
+        # stage=error => never a paid call), instead of grinding for a day.
+        self.dead_after = dead_after
+        self._timeouts: dict[str, int] = {}
+        self._dead: set[str] = set()
 
     def models(self) -> list[str]:
         req = urllib.request.Request(f"{self.endpoint}/v1/models")
@@ -82,6 +93,9 @@ class LlamaSwap:
         if seed is not None:
             body["seed"] = seed
 
+        if model in self._dead:
+            raise LLMError(f"{model}: declared dead after {self.dead_after} "
+                           f"timeouts tonight; not retrying")
         timeout = WARM_TIMEOUT if model in self._warm else self.timeout
         last_err: Exception | None = None
 
@@ -119,6 +133,13 @@ class LlamaSwap:
             # run and lose every screened posting — do not narrow this.
             except (OSError, TimeoutError, json.JSONDecodeError, KeyError, LLMError) as err:
                 last_err = err
+                # A timeout (socket.timeout subclasses TimeoutError AND OSError)
+                # is the expensive failure — count it toward the model breaker.
+                if isinstance(err, TimeoutError):
+                    self._timeouts[model] = self._timeouts.get(model, 0) + 1
+                    if self._timeouts[model] >= self.dead_after:
+                        self._dead.add(model)
+                        break
                 if attempt < retries:
                     time.sleep(2 * (attempt + 1))
 

@@ -54,9 +54,13 @@ def write_reports(outdir: Path, kept, dropped, fetch_errors, *, submitted,
         lines += ["## Kept, in local fit order", "",
                   "| fit~ | company | title | link |", "|---|---|---|---|"]
         for d in kept:
+            # stage=error is a fail-open passthrough, not a screened keep — its
+            # blank fit is "the model never ran", not "the model rated it low".
+            # Flag it so the table doesn't read as a verdict.
+            fit = ("NOT SCREENED (model error)" if d.stage == "error"
+                   else d.detail.get("fit_sketch", "—"))
             lines.append(
-                f"| {d.detail.get('fit_sketch','—')} | {d.company} | {d.title} | [link]({d.url}) |"
-            )
+                f"| {fit} | {d.company} | {d.title} | [link]({d.url}) |")
         lines.append("")
 
     # Gate drops are the ones most worth a human eye — a wrong gate silently
