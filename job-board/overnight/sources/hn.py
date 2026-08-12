@@ -94,8 +94,14 @@ _NOT_A_TITLE = re.compile(
     r"[a-z ]+,\s*[a-z]{2})$", re.I)
 
 
+# job-store scores nothing under 100 chars of description (app.py's
+# threshold) — anything shorter would eat a --max-submit slot and upsert
+# unscored, so the floor here matches the backend's.
+_MIN_TEXT = 100
+
+
 def _looks_like_posting(company: str, title: str, text: str) -> bool:
-    if len(text) < 80:                      # too short to be a real posting
+    if len(text) < _MIN_TEXT:               # too short to be a real posting
         return False
     if not _HIRING_HINT.search(text):       # reads like discussion, not a job
         return False

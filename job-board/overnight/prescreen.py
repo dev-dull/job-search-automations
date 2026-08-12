@@ -184,9 +184,10 @@ class Prescreener:
         self.llm = llm
         self.triage_model = triage_model
         self.screen_model = screen_model
-        self.extra_drops = build_title_drops(
-            title_drops_extra if title_drops_extra is not None
-            else os.environ.get("TITLE_DROPS_EXTRA"))
+        # The CLI (discover.py) resolves $TITLE_DROPS_EXTRA into the flag;
+        # reading env here too would make direct construction (tests, library
+        # use) inherit ambient state from the operator's shell.
+        self.extra_drops = build_title_drops(title_drops_extra)
         self.fit_floor = fit_floor
         self.max_jd_chars = max_jd_chars
         self.gate_system = GATE_SYSTEM_TMPL.format(

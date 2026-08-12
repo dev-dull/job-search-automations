@@ -62,9 +62,10 @@ def seen_keys(payload: dict) -> set[str]:
     """The seen-set from GET /jobs/urls. Prefers dedupe_keys; falls back to
     computing keys from urls for older backends (same behavior as the
     poller's _seen_keys — this is the spend guardrail, so no silent empty)."""
-    keys = set(payload.get("dedupe_keys") or [])
+    keys = {k for k in payload.get("dedupe_keys") or [] if k}
     if not keys:
-        keys = {compute_dedupe_key(u) for u in payload.get("urls") or []}
+        keys = {k for k in (compute_dedupe_key(u)
+                            for u in payload.get("urls") or []) if k}
     return keys
 
 
@@ -151,7 +152,15 @@ def main(argv: list[str] | None = None) -> int:
     resume_text = resume if isinstance(resume, str) else json.dumps(resume)
 
     # Companies already watched: their roles are the poller's job, not ours.
-    watched = http_json(f"{args.backend}/companies.json")
+    # Non-fatal on failure: losing this only costs re-screening watched
+    # companies locally (the seen-set still dedupes anything already posted).
+    try:
+        watched = http_json(f"{args.backend}/companies.json")
+    except Exception as err:                            # noqa: BLE001
+        errors_boot.append(f"companies.json unavailable ({type(err).__name__}); "
+                           f"watched-company skip disabled tonight")
+        print(f"[!] {errors_boot[-1]}")
+        watched = []
     if isinstance(watched, dict):
         watched = watched.get("companies", [])
     watched_names = {(c.get("name") or "").strip().lower() for c in watched}
@@ -256,9 +265,12 @@ def main(argv: list[str] | None = None) -> int:
             }
             try:
                 res = http_json(f"{args.backend}/jobs/score", payload, timeout=180)
+                # Contract per job-store app.py's response_body: rank_score /
+                # fit_score at the top level (candidate_score only exists
+                # nested inside analysis).
                 submitted.append({"url": d.url, "title": d.title, "company": d.company,
-                                  "rank": res.get("rank"), "score": res.get("candidate_score")})
-                print(f"[$] {d.company} — {d.title[:44]} rank={res.get('rank')}")
+                                  "rank": res.get("rank_score"), "score": res.get("fit_score")})
+                print(f"[$] {d.company} — {d.title[:44]} rank={res.get('rank_score')}")
             except urllib.error.HTTPError as err:
                 print(f"[!] submit failed {d.url}: HTTP {err.code}")
             except Exception as err:

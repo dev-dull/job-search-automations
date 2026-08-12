@@ -84,7 +84,7 @@ def write_reports(outdir: Path, kept, dropped, fetch_errors, *, submitted,
 
     problems = [e for e in fetch_errors if e]
     if problems:
-        lines += ["## Source problems", ""] + [f"- {e}" for e in problems] + [""]
+        lines += ["## Problems", ""] + [f"- {e}" for e in problems] + [""]
 
     lines += [
         "---",
