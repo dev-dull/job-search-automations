@@ -258,6 +258,9 @@ class SurfaceTest(unittest.TestCase):
         # the admin rollup — that's the surface you reach for DURING a storm.
         import codes as codes_mod
         app_mod.db.bump("fail:GLOBAL", codes_mod.FAILED_ATTEMPTS_GLOBAL_HOUR, 3600)
+        # Precondition: the lockout is genuinely in effect (guards against the
+        # key/ceiling drifting and this test passing vacuously).
+        self.assertEqual(self._enter().status_code, 403)
         r = self.client.get("/admin/summary.json",
                             headers={"X-Admin-Token": "test-admin-token"})
         self.assertEqual(r.status_code, 200)
