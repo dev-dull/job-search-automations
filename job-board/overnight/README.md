@@ -63,6 +63,8 @@ morning report and tune the funnel before letting it spend.
 | `--gate-model` | `$GATE_MODEL` / `coder` | model alias for the gates+fit stage |
 | `--title-drops-extra` | `$TITLE_DROPS_EXTRA` | comma-separated title words to drop on sight. The built-in list drops only clearly-entry-level titles; **your** band/family exclusions (staff, manager, frontend, …) go here or in the gates file — they're personal config, not toolkit code |
 | `--model-dead-after` | `$MODEL_DEAD_AFTER` / 2 | give up on a local model after this many timeouts in a run (bounds wall-clock if the LLM host hangs) |
+| — | `$SOURCE_MIN_DELAY_S` / 2.0 | minimum seconds between requests to one host (source politeness) |
+| — | `$SOURCE_BLOCK_AFTER` / 1 | 403/429s from a host before dropping it for the night |
 | `--backend` | `$JOB_STORE` | job-store base URL (**required**) |
 | `--llm` | `$LLAMA_SWAP` | OpenAI-compatible LLM base URL |
 

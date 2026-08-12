@@ -38,6 +38,9 @@ import re
 from dataclasses import dataclass, field
 
 from llm import GATE_SCHEMA, TRIAGE_SCHEMA, LlamaSwap, LLMError
+# The backend's scoring floor lives in one place; sources never
+# imports prescreen, so this import creates no cycle.
+from sources import MIN_DESCRIPTION_CHARS as MIN_DESCRIPTION
 
 TRIAGE_SYSTEM = """You CLASSIFY job titles. You do not decide whether to keep them.
 
@@ -148,9 +151,6 @@ _GENERIC_TITLE_DROPS = re.compile(
     r"\b(intern|internship|apprentice|new[- ]grad)\b", re.I)
 _SENIOR_HINT = re.compile(r"\b(senior|sr\.?|lead)\b", re.I)
 
-# The backend's scoring floor, shared across sources and the prescreen so the
-# number lives in one place (sources.MIN_DESCRIPTION_CHARS).
-from sources import MIN_DESCRIPTION_CHARS as MIN_DESCRIPTION
 
 
 def build_title_drops(extra: str | None) -> re.Pattern | None:
@@ -226,6 +226,7 @@ class Prescreener:
         # here without a lock. Gate failures are already visible (stage=error
         # in the report); triage failures were the last silent degradation.
         self._triage_errors: list[str] = []
+        self._stage2_count = 0
 
         # Stage 1 — free.
         for p in postings:
@@ -246,6 +247,7 @@ class Prescreener:
             progress(f"rules: {len(postings) - len(stage2)} dropped, {len(stage2)} to triage")
 
         # Stage 2 — scorer resident for the whole stage.
+        self._stage2_count = len(stage2)
         stage3: list[dict] = []
         if stage2:
             with cf.ThreadPoolExecutor(max_workers=triage_workers) as pool:
@@ -258,10 +260,13 @@ class Prescreener:
         if progress:
             progress(f"triage: {len(stage2) - len(stage3)} dropped, {len(stage3)} to full screen")
         if self._triage_errors and problems is not None:
-            # One deduped line per failing model, not 400 — a dead triage
-            # model must be visible, not spammy.
-            for msg in sorted(set(self._triage_errors)):
-                problems.append(msg)
+            # Deduped BY MESSAGE but keeping the count: 400 identical
+            # "declared dead" failures and one transient reset must not render
+            # the same. The magnitude is the actionable half.
+            from collections import Counter
+            for msg, n in Counter(self._triage_errors).most_common():
+                problems.append(f"{n} of {self._stage2_count} to triage "
+                                f"UNTRIAGED — {msg}")
 
         # Stage 3 — coder resident for the whole stage.
         if stage3:

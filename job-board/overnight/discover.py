@@ -35,11 +35,13 @@ import urllib.request
 from collections import Counter
 from pathlib import Path
 
-# compute_dedupe_key lives in job-store's urls.py; import it directly rather
-# than via fetch, which would drag all six ATS adapter modules into the graph
-# just for this one function. fetch.py does the sys.path insert we rely on.
-import fetch  # noqa: F401  (performs the job-store sys.path insert)
-from urls import compute_dedupe_key
+# compute_dedupe_key lives in job-store's urls.py. Do the sys.path insert here
+# (the same one fetch.py does) and import urls DIRECTLY — importing via fetch
+# would pull all six ATS adapter modules into the graph for this one function.
+_JOB_STORE = Path(__file__).resolve().parent.parent / "job-store"
+if str(_JOB_STORE) not in sys.path:
+    sys.path.insert(0, str(_JOB_STORE))
+from urls import compute_dedupe_key  # noqa: E402
 from llm import LlamaSwap
 from prescreen import Decision, Prescreener
 from report import write_reports

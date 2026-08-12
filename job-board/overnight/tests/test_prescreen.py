@@ -58,6 +58,22 @@ class MinDescriptionTest(unittest.TestCase):
         self.assertEqual(d.stage, "rules")
 
 
+class TriageVisibilityTest(unittest.TestCase):
+    def test_dead_triage_model_reports_count_not_just_presence(self):
+        # A dead triage model must surface in problems WITH its magnitude
+        # (PR #76 round-7: dedupe kept presence but lost the count).
+        llm = _StubLLM(gates={"gate_failures": [], "fit_sketch": 70,
+                              "worth_paid_scoring": True}, raise_for=("scorer",))
+        p = prescreen.Prescreener(llm, gates_text="-", resume_text="r")
+        problems = []
+        p.screen_batch([_posting(f"DevOps Engineer {i}") for i in range(5)],
+                       triage_workers=1, gate_workers=1,
+                       progress=lambda m: None, problems=problems)
+        self.assertEqual(len(problems), 1)          # one deduped line...
+        self.assertIn("5 of 5", problems[0])        # ...but the count survives
+        self.assertIn("UNTRIAGED", problems[0])
+
+
 class FunnelTest(unittest.TestCase):
     def _screen(self, llm, postings):
         p = prescreen.Prescreener(llm, gates_text="- no gates", resume_text="r",
