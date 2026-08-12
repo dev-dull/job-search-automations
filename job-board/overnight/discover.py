@@ -175,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
             errors.append(f"unknown source {name!r}")
             continue
         try:
-            got = mod.collect(limit=args.max_per_source)
+            got = mod.collect(limit=args.max_per_source, problems=errors)
             raw.extend(got)
             print(f"[*] {name}: {len(got)} postings")
         except Exception as err:

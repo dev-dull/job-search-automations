@@ -113,9 +113,11 @@ def _looks_like_posting(company: str, title: str, text: str) -> bool:
     return True
 
 
-def collect(limit: int = 500) -> list[dict]:
+def collect(limit: int = 500, problems: list[str] | None = None) -> list[dict]:
     thread = latest_thread()
     if not thread:
+        if problems is not None:
+            problems.append("hn: no 'Who is hiring' thread found this month")
         return []
     story_id = thread["objectID"]
 

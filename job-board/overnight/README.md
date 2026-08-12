@@ -95,7 +95,8 @@ a best-effort pick from the comment's links — occasionally a company homepage
 rather than the posting. That's an accepted trade for HN's unique signal, but
 it means an HN submission can put a homepage-URL row with a blurb-quality
 description on the board; the morning report is where you catch those.
-Comments under the backend's minimum description length upsert unscored.
+Comments under the backend's 100-char scoring minimum are dropped at
+collection, so they can't eat a submission slot.
 
 ## Things that will bite you
 
@@ -132,9 +133,11 @@ error recorded. A model problem must never silently shrink the funnel.
 - `force` is never sent, so re-POSTing a known URL returns the cached analysis
   free of charge.
 - The seen-set is fetched before anything else and every known dedupe key skipped.
-- Sources use official APIs/feeds, send an honest User-Agent, and are rate-limited
-  per host. `fetch.PoliteFetcher` also drops a host for the night after repeated
-  403/429 rather than backing off into a block.
+- Sources use official APIs/feeds, send an honest User-Agent, and are
+  rate-limited per host — and every source fetch shares a per-host circuit
+  breaker (`sources.polite_get`) that drops a host for the night after
+  repeated 403/429 rather than backing off into a block.
+  `fetch.PoliteFetcher` applies the same policy to adapter-based fetching.
 - Companies are **never** auto-added to the watch list. The report lists the ones
   that produced keeps; adding them stays a human decision.
 - Keep reports on durable storage — if your LLM host's disks are scratch

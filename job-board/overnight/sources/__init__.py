@@ -41,17 +41,30 @@ USER_AGENT = os.environ.get(
 # path has its own politeness (fetch.PoliteFetcher); this covers the raw
 # API/feed fetches the current sources make.
 _MIN_DELAY_S = float(os.environ.get("SOURCE_MIN_DELAY_S", "2.0"))
+_BLOCK_AFTER = 3          # 403/429s from one host before giving up for the night
 _last_hit: dict[str, float] = {}
+_refusals: dict[str, int] = {}
+_blocked: set[str] = set()
+
+
+class HostBlocked(RuntimeError):
+    """This host has refused us enough times tonight; stop asking."""
 
 
 def polite_get(url: str, timeout: int = 30) -> bytes:
-    """GET with an honest UA and a per-host minimum delay. All source fetches
-    go through here so the README's rate-limiting guarantee is made by code,
-    not by prose."""
+    """GET with an honest UA, a per-host minimum delay, and a per-host
+    circuit breaker on repeated 403/429. All source fetches go through here so
+    the README's politeness guarantees are made by code, not by prose.
+    Retrying into a block turns a one-off refusal into a pattern — the breaker
+    is deliberately trigger-happy, same policy as fetch.PoliteFetcher."""
     import time
+    import urllib.error
     import urllib.parse
     import urllib.request
     host = urllib.parse.urlparse(url).netloc.lower()
+    if host in _blocked:
+        raise HostBlocked(
+            f"{host}: skipped, refused {_refusals.get(host, 0)}x tonight")
     last = _last_hit.get(host)
     if last is not None:
         wait = _MIN_DELAY_S - (time.monotonic() - last)
@@ -59,8 +72,15 @@ def polite_get(url: str, timeout: int = 30) -> bytes:
             time.sleep(wait)
     _last_hit[host] = time.monotonic()
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as err:
+        if err.code in (403, 429):
+            _refusals[host] = _refusals.get(host, 0) + 1
+            if _refusals[host] >= _BLOCK_AFTER:
+                _blocked.add(host)
+        raise
 
 
 _TAG = re.compile(r"<[^>]+>")
@@ -95,4 +115,4 @@ from . import hn, wwr  # noqa: E402
 
 SOURCES = {"hn": hn, "wwr": wwr}
 
-__all__ = ["SOURCES", "USER_AGENT", "polite_get", "posting", "strip_html"]
+__all__ = ["SOURCES", "USER_AGENT", "HostBlocked", "polite_get", "posting", "strip_html"]

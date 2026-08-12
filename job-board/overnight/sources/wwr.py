@@ -38,13 +38,19 @@ def _text(item: ET.Element, tag: str) -> str:
     return (el.text or "").strip() if el is not None and el.text else ""
 
 
-def collect(limit: int = 300, feeds: dict[str, str] | None = None) -> list[dict]:
+def collect(limit: int = 300, feeds: dict[str, str] | None = None,
+            problems: list[str] | None = None) -> list[dict]:
     out: list[dict] = []
     for name, url in (feeds or FEEDS).items():
         try:
             root = ET.fromstring(_fetch(url))
-        except Exception:
-            continue  # a dead feed must not take the whole night down
+        except Exception as err:
+            # A dead feed must not take the whole night down — but it must
+            # not be INVISIBLE either, or the funnel silently narrows to
+            # HN-only. Record it where the morning report will show it.
+            if problems is not None:
+                problems.append(f"wwr feed {name!r}: {type(err).__name__}: {err}")
+            continue
 
         for item in root.findall(".//item"):
             raw_title = _text(item, "title")

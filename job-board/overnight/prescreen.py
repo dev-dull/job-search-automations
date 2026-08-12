@@ -114,7 +114,10 @@ class Decision:
     title: str
     company: str
     keep: bool
-    stage: str                      # rules | triage | gates | kept
+    stage: str                      # rules | triage | gates | kept | error
+                                    # ("error" = fail-open passthrough: shown
+                                    # in the report, NEVER submitted for paid
+                                    # scoring — discover.py filters on it)
     reason: str
     detail: dict = field(default_factory=dict)
 
